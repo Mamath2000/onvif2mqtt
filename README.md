@@ -139,6 +139,208 @@ curl http://localhost:3000/api/cameras/Camera%20Bureau/snapshot \
   --output snapshot.jpg
 ```
 
+## Intégration MQTT
+
+### Topics MQTT disponibles
+
+L'application utilise le protocole MQTT pour l'intégration avec Home Assistant et permet le contrôle à distance via des topics standardisés.
+
+#### Structure des topics
+
+Tous les topics suivent le format : `{discovery_prefix}/{component_type}/{device_id}/{action}`
+
+**Exemple avec une caméra "Camera Salon" :**
+- Prefix de découverte : `homeassistant`
+- ID de la caméra : `camera_salon` (nom en minuscules, espaces remplacés par _)
+
+#### Topics de commande (Command Topics)
+
+| Topic | Type | Description | Payload |
+|-------|------|-------------|---------|
+| `homeassistant/switch/{camera_id}_power/set` | Commande | Contrôle alimentation caméra | `ON` / `OFF` |
+
+**Exemple :**
+```bash
+# Allumer la caméra
+mosquitto_pub -h localhost -t "homeassistant/switch/camera_salon_power/set" -m "ON"
+
+# Éteindre la caméra  
+mosquitto_pub -h localhost -t "homeassistant/switch/camera_salon_power/set" -m "OFF"
+```
+
+#### Topics d'état (State Topics)
+
+| Topic | Type | Description | Payload |
+|-------|------|-------------|---------|
+| `homeassistant/switch/{camera_id}_power/state` | État | État alimentation caméra | `ON` / `OFF` |
+| `homeassistant/sensor/{camera_id}_status/state` | Capteur | Statut connexion caméra | `online` / `offline` / `error` |
+
+### Structure ONVIF2MQTT
+
+En plus de l'intégration Home Assistant, l'application propose une structure MQTT dédiée pour un contrôle avancé des caméras ONVIF.
+
+#### Topics ONVIF2MQTT disponibles
+
+| Topic | Type | Description | Payload | Exemple |
+|-------|------|-------------|---------|---------|
+| `onvif2mqtt/{cam_id}/lwt` | État | Statut en ligne de la caméra | `online` / `offline` | `onvif2mqtt/camera_salon/lwt` |
+| `onvif2mqtt/{cam_id}/presetListId` | État | Liste des presets (nom/ID) | JSON object | `{"Cours":1,"Terrasse":2,"Potager":3}` |
+| `onvif2mqtt/{cam_id}/move` | Commande | Mouvement PTZ | `left` / `right` / `up` / `down` | `onvif2mqtt/camera_salon/move` |
+| `onvif2mqtt/{cam_id}/zoom` | Commande | Zoom PTZ | `+` / `-` | `onvif2mqtt/camera_salon/zoom` |
+| `onvif2mqtt/{cam_id}/goPreset` | Commande | Aller à un preset | ID du preset | `onvif2mqtt/camera_salon/goPreset` |
+
+#### Exemples d'utilisation ONVIF2MQTT
+
+```bash
+# Surveiller le statut d'une caméra
+mosquitto_sub -h localhost -t "onvif2mqtt/camera_salon/lwt"
+
+# Voir la liste des presets disponibles
+mosquitto_sub -h localhost -t "onvif2mqtt/camera_salon/presetListId"
+
+# Contrôler le mouvement PTZ
+mosquitto_pub -h localhost -t "onvif2mqtt/camera_salon/move" -m "up"
+mosquitto_pub -h localhost -t "onvif2mqtt/camera_salon/move" -m "left"
+
+# Contrôler le zoom
+mosquitto_pub -h localhost -t "onvif2mqtt/camera_salon/zoom" -m "+"
+mosquitto_pub -h localhost -t "onvif2mqtt/camera_salon/zoom" -m "-"
+
+# Aller à un preset
+mosquitto_pub -h localhost -t "onvif2mqtt/camera_salon/goPreset" -m "1"
+mosquitto_pub -h localhost -t "onvif2mqtt/camera_salon/goPreset" -m "3"
+```
+
+#### Intégration avec d'autres systèmes
+
+```python
+# Exemple Python - Contrôle PTZ via ONVIF2MQTT
+import paho.mqtt.client as mqtt
+import json
+
+def on_connect(client, userdata, flags, rc):
+    print(f"Connecté avec le code {rc}")
+    # S'abonner aux statuts
+    client.subscribe("onvif2mqtt/+/lwt")
+    client.subscribe("onvif2mqtt/+/presetListId")
+
+def on_message(client, userdata, message):
+    topic_parts = message.topic.split('/')
+    camera_id = topic_parts[1]
+    command = topic_parts[2]
+    payload = message.payload.decode()
+    
+    if command == "lwt":
+        print(f"Caméra {camera_id} est {payload}")
+    elif command == "presetListId":
+        presets = json.loads(payload)
+        print(f"Presets disponibles pour {camera_id}:")
+        for name, preset_id in presets.items():
+            print(f"  - {name}: ID {preset_id}")
+
+client = mqtt.Client()
+client.on_connect = on_connect
+client.on_message = on_message
+client.connect("localhost", 1883, 60)
+
+# Exemples de commandes
+client.publish("onvif2mqtt/camera_salon/move", "up")
+client.publish("onvif2mqtt/camera_salon/goPreset", "1")  # Utiliser l'ID du preset souhaité
+
+client.loop_forever()
+```
+
+#### Topics de configuration (Discovery)
+
+L'application publie automatiquement la configuration Home Assistant Discovery :
+
+| Topic | Description |
+|-------|-------------|
+| `homeassistant/switch/{camera_id}_power/config` | Configuration switch alimentation |
+| `homeassistant/camera/{camera_id}_camera/config` | Configuration entité caméra |
+| `homeassistant/sensor/{camera_id}_status/config` | Configuration capteur statut |
+
+#### Topic de disponibilité
+
+| Topic | Description | Payload |
+|-------|-------------|---------|
+| `homeassistant/status` | Statut application | `online` / `offline` |
+
+### Exemples d'utilisation MQTT
+
+#### Surveillance avec mosquitto_sub
+
+```bash
+# Surveiller tous les topics ONVIF
+mosquitto_sub -h localhost -t "homeassistant/+/camera_+/+"
+
+# Surveiller l'état d'une caméra spécifique
+mosquitto_sub -h localhost -t "homeassistant/switch/camera_salon_power/state"
+
+# Surveiller le statut de connexion
+mosquitto_sub -h localhost -t "homeassistant/sensor/camera_salon_status/state"
+```
+
+#### Contrôle via mosquitto_pub
+
+```bash
+# Contrôler l'alimentation
+mosquitto_pub -h localhost -t "homeassistant/switch/camera_salon_power/set" -m "ON"
+mosquitto_pub -h localhost -t "homeassistant/switch/camera_salon_power/set" -m "OFF"
+```
+
+#### Intégration avec d'autres systèmes
+
+```python
+# Exemple Python avec paho-mqtt
+import paho.mqtt.client as mqtt
+
+def on_message(client, userdata, message):
+    topic = message.topic
+    payload = message.payload.decode()
+    print(f"Caméra état changé: {topic} = {payload}")
+
+client = mqtt.Client()
+client.on_message = on_message
+client.connect("localhost", 1883, 60)
+client.subscribe("homeassistant/sensor/+_status/state")
+client.loop_forever()
+```
+
+### Configuration MQTT avancée
+
+#### Authentification
+
+```env
+MQTT_USERNAME=votre_utilisateur
+MQTT_PASSWORD=votre_mot_de_passe
+```
+
+#### Topics personnalisés
+
+```env
+# Changer le préfixe de découverte
+HA_DISCOVERY_PREFIX=mon_domotique
+
+# Résultat: mon_domotique/switch/camera_salon_power/set
+```
+
+#### Qualité de service (QoS)
+
+- **QoS 0** : Topics d'état (par défaut)
+- **QoS 1** : Topics de commande et configuration
+- **Retain** : Activé pour les topics de configuration et de statut
+
+### Limitations actuelles
+
+⚠️ **Fonctionnalités disponibles uniquement via API REST :**
+- Contrôles PTZ (Pan/Tilt/Zoom)
+- Gestion des presets
+- Capture de snapshots à la demande
+- Découverte de caméras
+
+💡 **Pour utiliser ces fonctionnalités, utilisez l'API REST ou l'interface web.**
+
 ## Integration Home Assistant
 
 ### Configuration automatique
@@ -153,7 +355,7 @@ L'application publie automatiquement la configuration de découverte MQTT. Les e
 #### Automatisations
 
 ```yaml
-# Exemple d'automatisation
+# Exemple 1: Activer caméra en cas de mouvement
 automation:
   - alias: "Activer caméra en cas de mouvement"
     trigger:
@@ -164,25 +366,132 @@ automation:
       - service: switch.turn_on
         target:
           entity_id: switch.camera_salon_power
+
+# Exemple 2: Notification si caméra hors ligne
+automation:
+  - alias: "Alerte caméra hors ligne"
+    trigger:
+      - platform: state
+        entity_id: sensor.camera_salon_status
+        to: 'offline'
+        for: "00:02:00"
+    action:
+      - service: notify.mobile_app
+        data:
+          message: "Caméra Salon hors ligne depuis 2 minutes"
+          title: "🚨 Problème caméra"
+
+# Exemple 3: Cycle d'alimentation automatique
+automation:
+  - alias: "Redémarrage caméra planifié"
+    trigger:
+      - platform: time
+        at: "03:00:00"
+    action:
+      - service: switch.turn_off
+        target:
+          entity_id: switch.camera_salon_power
+      - delay: "00:00:30"
+      - service: switch.turn_on
+        target:
+          entity_id: switch.camera_salon_power
+```
+
+#### Scripts pour contrôle PTZ
+
+```yaml
+# Script pour aller à un preset via API REST
+script:
+  camera_preset_cours:
+    alias: "Caméra - Vue Cours"
+    sequence:
+      - service: rest_command.camera_preset
+        data:
+          camera: "Camera Cours0"
+          preset: "1"
+
+# Configuration REST command
+rest_command:
+  camera_preset:
+    url: "http://localhost:3000/api/cameras/{{ camera }}/presets/{{ preset }}"
+    method: POST
 ```
 
 #### Cartes Lovelace
 
 ```yaml
-# Carte caméra simple
-type: picture-entity
-entity: camera.camera_salon_stream
-camera_image: camera.camera_salon_stream
-
-# Carte avec contrôles
+# Carte caméra simple avec contrôles
 type: vertical-stack
 cards:
   - type: picture-entity
     entity: camera.camera_salon_stream
+    camera_image: camera.camera_salon_stream
+    tap_action:
+      action: more-info
   - type: entities
     entities:
-      - switch.camera_salon_power
-      - sensor.camera_salon_status
+      - entity: switch.camera_salon_power
+        name: "Alimentation"
+        icon: mdi:power
+      - entity: sensor.camera_salon_status
+        name: "Statut"
+        icon: mdi:camera-enhance
+
+# Carte avec boutons de presets personnalisés
+type: vertical-stack
+cards:
+  - type: picture-entity
+    entity: camera.camera_cours0_stream
+  - type: horizontal-stack
+    cards:
+      - type: button
+        name: "Cours"
+        tap_action:
+          action: call-service
+          service: rest_command.camera_preset
+          service_data:
+            camera: "Camera Cours0"
+            preset: "1"
+      - type: button
+        name: "Terrasse"
+        tap_action:
+          action: call-service
+          service: rest_command.camera_preset
+          service_data:
+            camera: "Camera Cours0"
+            preset: "2"
+```
+
+#### Dashboard complet
+
+```yaml
+# Vue dédiée aux caméras ONVIF
+title: Caméras ONVIF
+path: cameras-onvif
+cards:
+  - type: grid
+    columns: 2
+    square: false
+    cards:
+      - type: vertical-stack
+        cards:
+          - type: picture-entity
+            entity: camera.camera_salon_stream
+            name: "Caméra Salon"
+          - type: glance
+            entities:
+              - switch.camera_salon_power
+              - sensor.camera_salon_status
+      
+      - type: vertical-stack  
+        cards:
+          - type: picture-entity
+            entity: camera.camera_cours0_stream
+            name: "Caméra Cours"
+          - type: glance
+            entities:
+              - switch.camera_cours0_power
+              - sensor.camera_cours0_status
 ```
 
 ## Structure du projet
@@ -205,21 +514,126 @@ src/
 
 ### Problèmes de connexion MQTT
 
-1. Vérifiez les paramètres de connexion dans `.env`
-2. Assurez-vous que le broker MQTT est accessible
-3. Consultez les logs : `tail -f logs/app.log`
+1. **Vérifiez les paramètres de connexion dans `.env`**
+   ```bash
+   # Test de connexion manuelle
+   mosquitto_pub -h YOUR_MQTT_HOST -p 1883 -u YOUR_USERNAME -P YOUR_PASSWORD -t "test" -m "hello"
+   ```
+
+2. **Vérifiez que le broker MQTT est accessible**
+   ```bash
+   # Test de connectivité réseau
+   telnet YOUR_MQTT_HOST 1883
+   ```
+
+3. **Consultez les logs MQTT**
+   ```bash
+   # Logs de l'application
+   tail -f logs/app.log | grep MQTT
+   
+   # Surveiller tous les messages MQTT
+   mosquitto_sub -h YOUR_MQTT_HOST -t "#" -v
+   ```
+
+4. **Problèmes d'authentification**
+   - Vérifiez les credentials MQTT dans `.env`
+   - Testez avec mosquitto_pub/sub
+   - Vérifiez les ACL du broker MQTT
+
+### Messages MQTT non reçus
+
+1. **Vérifiez les topics**
+   ```bash
+   # Lister tous les topics actifs
+   mosquitto_sub -h localhost -t "homeassistant/#" -v
+   
+   # Vérifier un topic spécifique
+   mosquitto_sub -h localhost -t "homeassistant/switch/camera_salon_power/state"
+   ```
+
+2. **Problèmes de QoS et Retain**
+   - Les topics de configuration utilisent retain=true
+   - Redémarrez l'application pour republier la découverte
+
+3. **Problèmes Home Assistant Discovery**
+   ```bash
+   # Forcer la republication de la découverte
+   # Redémarrer l'application ou reconnecter une caméra
+   curl -X POST http://localhost:3000/api/cameras/Camera%20Salon/connect
+   ```
 
 ### Caméras non détectées
 
-1. Vérifiez que les caméras sont sur le même réseau
-2. Testez la connexion manuelle via l'interface web
-3. Vérifiez les credentials ONVIF de la caméra
+1. **Vérifiez que les caméras sont sur le même réseau**
+   ```bash
+   # Test de ping
+   ping 192.168.1.100
+   
+   # Test de port ONVIF
+   telnet 192.168.1.100 80
+   ```
+
+2. **Testez la connexion manuelle via l'interface web**
+   - Ouvrez http://localhost:3000
+   - Utilisez la fonction "Découverte automatique"
+   - Ajoutez manuellement via l'interface
+
+3. **Vérifiez les credentials ONVIF de la caméra**
+   ```bash
+   # Test API direct
+   curl -X POST http://localhost:3000/api/cameras \
+     -H "Content-Type: application/json" \
+     -d '{"name":"Test","host":"192.168.1.100","username":"admin","password":"password"}'
+   ```
 
 ### Problèmes PTZ
 
-1. Assurez-vous que la caméra supporte ONVIF PTZ
-2. Vérifiez les permissions utilisateur de la caméra
-3. Testez avec des vitesses différentes (0.1 à 1.0)
+1. **Assurez-vous que la caméra supporte ONVIF PTZ**
+   - Vérifiez dans l'interface caméra que PTZ est activé
+   - Consultez la documentation de votre caméra
+
+2. **Vérifiez les permissions utilisateur de la caméra**
+   - L'utilisateur ONVIF doit avoir les droits PTZ
+   - Testez avec un compte administrateur
+
+3. **Testez avec des vitesses différentes (0.1 à 1.0)**
+   ```bash
+   # Test PTZ via API
+   curl -X POST http://localhost:3000/api/cameras/Camera%20Salon/ptz/move \
+     -H "Content-Type: application/json" \
+     -d '{"direction": "up", "speed": 0.5}'
+   ```
+
+### Problèmes de presets
+
+1. **Les presets ne s'affichent pas**
+   - Vérifiez que la caméra a des presets configurés
+   - Consultez les logs : `tail -f logs/app.log | grep preset`
+
+2. **Échec d'activation des presets**
+   ```bash
+   # Test direct de l'API presets
+   curl "http://localhost:3000/api/cameras/Camera%20Cours0/presets"
+   
+   # Test activation d'un preset
+   curl -X POST "http://localhost:3000/api/cameras/Camera%20Cours0/presets/1"
+   ```
+
+### Performance et stabilité
+
+1. **Application qui s'arrête**
+   ```bash
+   # Vérifier les erreurs système
+   journalctl -u your-app-service -f
+   
+   # Surveiller l'utilisation mémoire
+   top -p $(pgrep -f "node src/app.js")
+   ```
+
+2. **Connexions ONVIF instables**
+   - Réduisez l'intervalle de surveillance dans la configuration
+   - Vérifiez la stabilité réseau vers les caméras
+   - Utilisez un réseau dédié pour les caméras si possible
 
 ## Logs
 

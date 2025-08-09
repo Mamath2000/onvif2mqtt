@@ -34,6 +34,7 @@ class OnvifMqttController {
 
             // Configurer les événements MQTT
             this.mqttManager.on('cameraCommand', this.handleMqttCommand.bind(this));
+            this.mqttManager.on('ptzCommand', this.handlePtzCommand.bind(this)); // Nouveau gestionnaire PTZ
 
             // Se connecter au broker MQTT
             await this.mqttManager.connect();
@@ -93,17 +94,35 @@ class OnvifMqttController {
             });
 
             // Connecter toutes les caméras
-            this.onvifManager.connectAllCameras().then(() => {
+            this.onvifManager.connectAllCameras().then(async () => {
                 // Publier la configuration de découverte pour Home Assistant
-                this.onvifManager.getAllCameras().forEach(camera => {
+                this.onvifManager.getAllCameras().forEach(async camera => {
                     if (camera.isConnected) {
+                        // Home Assistant Discovery
                         this.mqttManager.publishCameraDiscovery(camera);
                         this.mqttManager.publishCameraState(camera, camera.getStatus());
+                        
+                        // ONVIF2MQTT Structure
+                        this.mqttManager.publishCameraLWT(camera, 'online');
+                        
+                        // Publier les presets si la caméra supporte PTZ
+                        if (camera.hasPTZ) {
+                            try {
+                                const presets = await this.onvifManager.getCameraPresets(camera.name);
+                                this.mqttManager.publishCameraPresets(camera, presets);
+                            } catch (error) {
+                                logger.warn(`Impossible de charger les presets pour ${camera.name}:`, error.message);
+                            }
+                        }
+                    } else {
+                        // Publier LWT offline pour les caméras non connectées
+                        this.mqttManager.publishCameraLWT(camera, 'offline');
                     }
                 });
 
-                // S'abonner aux commandes MQTT
+                // S'abonner aux commandes MQTT (Home Assistant + onvif2mqtt)
                 this.mqttManager.subscribeToCommands(this.onvifManager.getAllCameras());
+                this.mqttManager.subscribeToOnvif2MqttCommands(this.onvifManager.getAllCameras());
             });
         } else {
             logger.info('Aucune caméra configurée dans les variables d\'environnement');
@@ -151,14 +170,75 @@ class OnvifMqttController {
         }
     }
 
+    async handlePtzCommand(command) {
+        try {
+            logger.debug('Commande PTZ onvif2mqtt reçue:', command);
+
+            const { cameraId, command: cmd, direction, speed, presetId } = command;
+            
+            // Trouver la caméra correspondante
+            const cameras = this.onvifManager.getAllCameras();
+            const camera = cameras.find(cam => 
+                cam.name.toLowerCase().replace(/\s+/g, '_') === cameraId
+            );
+
+            if (!camera) {
+                logger.warn(`Caméra non trouvée pour l'ID PTZ: ${cameraId}`);
+                return;
+            }
+
+            if (!camera.isConnected) {
+                logger.warn(`Caméra non connectée pour commande PTZ: ${cameraId}`);
+                return;
+            }
+
+            switch (cmd) {
+                case 'move':
+                    // direction: left/right/up/down
+                    logger.info(`PTZ Move ${direction} pour ${camera.name}`);
+                    const moveResult = await this.onvifManager.moveCameraPTZ(camera.name, direction, speed || 0.5);
+                    if (!moveResult) {
+                        logger.warn(`Échec du mouvement PTZ ${direction} pour ${camera.name}`);
+                    }
+                    break;
+
+                case 'zoom':
+                    // direction: in/out (converti depuis +/-)
+                    logger.info(`PTZ Zoom ${direction} pour ${camera.name}`);
+                    const zoomDirection = direction === 'in' ? 'zoom_in' : 'zoom_out';
+                    const zoomResult = await this.onvifManager.moveCameraPTZ(camera.name, zoomDirection, speed || 0.5);
+                    if (!zoomResult) {
+                        logger.warn(`Échec du zoom PTZ ${direction} pour ${camera.name}`);
+                    }
+                    break;
+
+                case 'preset':
+                    logger.info(`PTZ Preset ${presetId} pour ${camera.name}`);
+                    const presetResult = await this.onvifManager.gotoCameraPreset(camera.name, presetId);
+                    if (!presetResult) {
+                        logger.warn(`Échec de l'activation du preset ${presetId} pour ${camera.name}`);
+                    }
+                    break;
+
+                default:
+                    logger.warn(`Commande PTZ non reconnue: ${cmd}`);
+            }
+
+        } catch (error) {
+            logger.error('Erreur lors du traitement de la commande PTZ onvif2mqtt:', error);
+        }
+    }
+
     onStatusUpdate(statuses) {
         // Publier les statuts mis à jour via MQTT
         Object.values(statuses).forEach(status => {
-            if (status.isConnected) {
-                const camera = this.onvifManager.getCamera(status.name);
-                if (camera) {
-                    this.mqttManager.publishCameraState(camera, status);
-                }
+            const camera = this.onvifManager.getCamera(status.name);
+            if (camera) {
+                // Home Assistant state
+                this.mqttManager.publishCameraState(camera, status);
+                
+                // ONVIF2MQTT LWT
+                this.mqttManager.publishCameraLWT(camera, status.isConnected ? 'online' : 'offline');
             }
         });
     }

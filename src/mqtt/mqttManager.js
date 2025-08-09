@@ -14,6 +14,8 @@ class MqttManager {
             manufacturer: "Custom",
             sw_version: "1.0.0"
         };
+        // Nouvelle structure ONVIF2MQTT
+        this.onvif2mqttPrefix = 'onvif2mqtt';
     }
 
     async connect() {
@@ -64,6 +66,71 @@ class MqttManager {
         if (this.client && this.isConnected) {
             this.client.publish(`${this.config.discoveryPrefix}/status`, status, { retain: true });
         }
+    }
+
+    // === NOUVELLE STRUCTURE ONVIF2MQTT ===
+    
+    // Publier le statut LWT d'une caméra
+    publishCameraLWT(camera, status) {
+        const cameraId = camera.name.toLowerCase().replace(/\s+/g, '_');
+        const topic = `${this.onvif2mqttPrefix}/${cameraId}/lwt`;
+        
+        if (this.client && this.isConnected) {
+            this.client.publish(topic, status, { retain: true, qos: 1 });
+            logger.debug(`LWT publié pour ${camera.name}: ${status}`);
+        }
+    }
+
+    // Publier la liste des presets
+    publishCameraPresets(camera, presets) {
+        const cameraId = camera.name.toLowerCase().replace(/\s+/g, '_');
+        const topic = `${this.onvif2mqttPrefix}/${cameraId}/presetListId`;
+        
+        if (this.client && this.isConnected) {
+            // Convertir les presets en format clé/valeur utilisable
+            let presetList = {};
+            
+            if (presets && typeof presets === 'object') {
+                if (Array.isArray(presets)) {
+                    // Format tableau: [{name: "Cours", token: 1}, ...]
+                    presets.forEach(preset => {
+                        const name = preset.name || preset.Name || `Preset ${preset.token || preset.Token}`;
+                        const token = preset.token || preset.Token;
+                        if (token !== undefined) {
+                            presetList[name] = token;
+                        }
+                    });
+                } else {
+                    // Format objet: {"Cours": 1, "Terrasse": 2, ...}
+                    presetList = presets;
+                }
+            }
+            
+            const payload = JSON.stringify(presetList);
+            this.client.publish(topic, payload, { retain: true, qos: 1 });
+            logger.debug(`Presets publiés pour ${camera.name}: ${payload}`);
+        }
+    }
+
+    // S'abonner aux commandes onvif2mqtt pour toutes les caméras
+    subscribeToOnvif2MqttCommands(cameras) {
+        if (!this.client || !this.isConnected) return;
+
+        cameras.forEach(camera => {
+            const cameraId = camera.name.toLowerCase().replace(/\s+/g, '_');
+            
+            // Topics de commande
+            const commandTopics = [
+                `${this.onvif2mqttPrefix}/${cameraId}/move`,
+                `${this.onvif2mqttPrefix}/${cameraId}/zoom`, 
+                `${this.onvif2mqttPrefix}/${cameraId}/goPreset`
+            ];
+
+            commandTopics.forEach(topic => {
+                this.client.subscribe(topic, { qos: 1 });
+                logger.info(`Abonné aux commandes onvif2mqtt: ${topic}`);
+            });
+        });
     }
 
     // Publier la configuration de découverte automatique pour Home Assistant
@@ -173,7 +240,13 @@ class MqttManager {
     handleMessage(topic, message) {
         logger.debug(`Message reçu - Topic: ${topic}, Message: ${message}`);
         
-        // Parser le topic pour extraire l'ID de la caméra et le type de commande
+        // Gestion des commandes onvif2mqtt
+        if (topic.startsWith(this.onvif2mqttPrefix)) {
+            this.handleOnvif2MqttCommand(topic, message);
+            return;
+        }
+        
+        // Gestion des commandes Home Assistant (existant)
         const topicParts = topic.split('/');
         if (topicParts.length >= 4 && topicParts[0] === this.config.discoveryPrefix.replace('homeassistant', '').replace('/', '')) {
             const deviceType = topicParts[1];
@@ -190,6 +263,53 @@ class MqttManager {
                     command: 'power',
                     value: powerState
                 });
+            }
+        }
+    }
+
+    // Nouvelle méthode pour gérer les commandes onvif2mqtt
+    handleOnvif2MqttCommand(topic, message) {
+        const topicParts = topic.split('/');
+        // Format: onvif2mqtt/{cam_id}/{command}
+        
+        if (topicParts.length >= 3) {
+            const cameraId = topicParts[1];
+            const command = topicParts[2];
+            
+            logger.debug(`Commande onvif2mqtt reçue - Caméra: ${cameraId}, Commande: ${command}, Message: ${message}`);
+            
+            switch (command) {
+                case 'move':
+                    // message: left/right/up/down
+                    this.emit('ptzCommand', {
+                        cameraId,
+                        command: 'move',
+                        direction: message,
+                        speed: 0.5 // vitesse par défaut
+                    });
+                    break;
+                    
+                case 'zoom':
+                    // message: +/-
+                    this.emit('ptzCommand', {
+                        cameraId,
+                        command: 'zoom',
+                        direction: message === '+' ? 'in' : 'out',
+                        speed: 0.5
+                    });
+                    break;
+                    
+                case 'goPreset':
+                    // message: preset ID
+                    this.emit('ptzCommand', {
+                        cameraId,
+                        command: 'preset',
+                        presetId: message
+                    });
+                    break;
+                    
+                default:
+                    logger.warn(`Commande onvif2mqtt inconnue: ${command}`);
             }
         }
     }

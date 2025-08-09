@@ -128,18 +128,38 @@ class OnvifManager {
 
     async getCameraPresets(name) {
         const camera = this.cameras.get(name);
-        if (camera && camera.isConnected) {
-            return await camera.getPtzPresets();
+        if (!camera) {
+            logger.warn(`Caméra non trouvée: ${name}`);
+            return null;
         }
-        return [];
+        if (!camera.isConnected) {
+            logger.warn(`Caméra non connectée: ${name}`);
+            return [];
+        }
+        try {
+            return await camera.getPtzPresets();
+        } catch (error) {
+            logger.error(`Erreur lors de la récupération des presets pour ${name}:`, error);
+            return [];
+        }
     }
 
     async gotoCameraPreset(name, presetToken) {
         const camera = this.cameras.get(name);
-        if (camera && camera.isConnected) {
-            return await camera.gotoPreset(presetToken);
+        if (!camera) {
+            logger.warn(`Caméra non trouvée: ${name}`);
+            return false;
         }
-        return false;
+        if (!camera.isConnected) {
+            logger.warn(`Caméra non connectée: ${name}`);
+            return false;
+        }
+        try {
+            return await camera.gotoPreset(presetToken);
+        } catch (error) {
+            logger.error(`Erreur lors de l'activation du preset ${presetToken} pour ${name}:`, error);
+            return false;
+        }
     }
 
     // Découverte automatique des caméras ONVIF
@@ -151,23 +171,22 @@ class OnvifManager {
             const devices = await new Promise((resolve, reject) => {
                 const foundDevices = [];
                 
-                const discovery = onvif.startProbe();
-                
-                discovery.on('device', (cam, rinfo, xml) => {
+                onvif.Discovery.on('device', (cam, rinfo, xml) => {
                     foundDevices.push({
                         address: rinfo.address,
                         port: 80,
                         name: `Camera_${rinfo.address}`,
-                        xaddr: cam.xaddrs[0]
+                        xaddr: cam.xaddrs ? cam.xaddrs[0] : `http://${rinfo.address}/onvif/device_service`
                     });
                 });
 
-                discovery.on('error', (error) => {
-                    reject(error);
+                onvif.Discovery.on('error', (error) => {
+                    logger.warn('Erreur durant la découverte:', error);
                 });
 
+                onvif.Discovery.probe();
+
                 setTimeout(() => {
-                    discovery.stop();
                     resolve(foundDevices);
                 }, timeout);
             });
