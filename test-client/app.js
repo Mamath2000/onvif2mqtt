@@ -26,73 +26,151 @@ class OnvifTestClient {
                 <head>
                     <title>ONVIF Test Client</title>
                     <meta charset="utf-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1">
+                    <!-- Bootstrap CSS -->
+                    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+                    <!-- Bootstrap Icons -->
+                    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
                     <style>
-                        body { font-family: Arial, sans-serif; margin: 40px; background-color: #f5f5f5; }
-                        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-                        button { padding: 10px 20px; margin: 5px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
-                        .ptz-btn { background-color: #007bff; color: white; }
-                        .preset-btn { background-color: #28a745; color: white; }
-                        .section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 4px; }
-                        .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; max-width: 300px; margin: 10px 0; }
-                        .grid button { margin: 0; }
-                        #status { padding: 10px; margin: 10px 0; border-radius: 4px; }
-                        .connected { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-                        .disconnected { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-                        .log { background-color: #f8f9fa; padding: 15px; border-radius: 4px; max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 12px; }
+                        .ptz-grid { max-width: 200px; }
+                        .preset-container { max-height: 200px; overflow-y: auto; }
+                        .log-container { height: 300px; overflow-y: auto; background-color: #f8f9fa; font-family: 'Courier New', monospace; font-size: 0.875rem; }
+                        .status-badge { font-size: 0.875rem; }
                     </style>
                 </head>
-                <body>
-                    <div class="container">
-                        <h1>🧪 ONVIF Test Client</h1>
-                        <div id="status" class="disconnected">Déconnecté du broker MQTT</div>
-                        
-                        <div class="section">
-                            <h2>🎮 Contrôles PTZ</h2>
-                            <p>Contrôles de mouvement :</p>
-                            <div class="grid">
-                                <div></div>
-                                <button class="ptz-btn" onclick="sendPtzCommand('move-up')">⬆️ Haut</button>
-                                <div></div>
-                                <button class="ptz-btn" onclick="sendPtzCommand('move-left')">⬅️ Gauche</button>
-                                <button class="ptz-btn" onclick="sendPtzCommand('stop')">⏹️ Stop</button>
-                                <button class="ptz-btn" onclick="sendPtzCommand('move-right')">➡️ Droite</button>
-                                <div></div>
-                                <button class="ptz-btn" onclick="sendPtzCommand('move-down')">⬇️ Bas</button>
-                                <div></div>
-                            </div>
-                            <p>Contrôles de zoom :</p>
-                            <button class="ptz-btn" onclick="sendPtzCommand('zoom-in')">🔍 Zoom +</button>
-                            <button class="ptz-btn" onclick="sendPtzCommand('zoom-out')">🔍 Zoom -</button>
-                        </div>
-
-                        <div class="section">
-                            <h2>🎯 Presets</h2>
-                            <div id="presets-container">
-                                <p>Chargement des presets...</p>
-                            </div>
-                        </div>
-
-                        <div class="section">
-                            <h2>📊 Configuration PTZ</h2>
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
-                                <div>
-                                    <label>Amplitude mouvement:</label>
-                                    <input type="number" id="moveStep" value="0.02" min="0.01" max="1.0" step="0.01" style="width: 100%;">
-                                </div>
-                                <div>
-                                    <label>Amplitude zoom:</label>
-                                    <input type="number" id="zoomStep" value="0.15" min="0.01" max="1.0" step="0.01" style="width: 100%;">
+                <body class="bg-light">
+                    <div class="container-fluid py-4">
+                        <div class="row">
+                            <div class="col-12">
+                                <h1 class="display-6 mb-4"><i class="bi bi-camera-video text-primary"></i> ONVIF Test Client</h1>
+                                <div id="status-badge" class="mb-4">
+                                    <span class="badge bg-danger status-badge"><i class="bi bi-wifi-off"></i> Déconnecté du broker MQTT</span>
                                 </div>
                             </div>
-                            <button onclick="updateConfig()" style="background-color: #6c757d; color: white;">⚙️ Mettre à jour la config</button>
                         </div>
 
-                        <div class="section">
-                            <h2>📝 Logs MQTT</h2>
-                            <div id="logs" class="log">En attente de connexion MQTT...</div>
-                            <button onclick="clearLogs()" style="background-color: #dc3545; color: white; margin-top: 10px;">🗑️ Effacer les logs</button>
+                        <div class="row g-4">
+                            <!-- Contrôles PTZ -->
+                            <div class="col-lg-6">
+                                <div class="card h-100">
+                                    <div class="card-header bg-primary text-white">
+                                        <h5 class="card-title mb-0"><i class="bi bi-joystick"></i> Contrôles PTZ</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <h6 class="mb-3">Mouvement :</h6>
+                                        <div class="d-flex justify-content-center mb-4">
+                                            <div class="ptz-grid">
+                                                <div class="row g-2">
+                                                    <div class="col-4"></div>
+                                                    <div class="col-4">
+                                                        <button class="btn btn-outline-primary w-100" onclick="sendPtzCommand('move-up')">
+                                                            <i class="bi bi-arrow-up"></i>
+                                                        </button>
+                                                    </div>
+                                                    <div class="col-4"></div>
+                                                    <div class="col-4">
+                                                        <button class="btn btn-outline-primary w-100" onclick="sendPtzCommand('move-left')">
+                                                            <i class="bi bi-arrow-left"></i>
+                                                        </button>
+                                                    </div>
+                                                    <div class="col-4">
+                                                        <button class="btn btn-danger w-100" onclick="sendPtzCommand('stop')">
+                                                            <i class="bi bi-stop-fill"></i>
+                                                        </button>
+                                                    </div>
+                                                    <div class="col-4">
+                                                        <button class="btn btn-outline-primary w-100" onclick="sendPtzCommand('move-right')">
+                                                            <i class="bi bi-arrow-right"></i>
+                                                        </button>
+                                                    </div>
+                                                    <div class="col-4"></div>
+                                                    <div class="col-4">
+                                                        <button class="btn btn-outline-primary w-100" onclick="sendPtzCommand('move-down')">
+                                                            <i class="bi bi-arrow-down"></i>
+                                                        </button>
+                                                    </div>
+                                                    <div class="col-4"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <h6 class="mb-3">Zoom :</h6>
+                                        <div class="d-flex gap-2 justify-content-center">
+                                            <button class="btn btn-outline-secondary" onclick="sendPtzCommand('zoom-in')">
+                                                <i class="bi bi-zoom-in"></i> Zoom +
+                                            </button>
+                                            <button class="btn btn-outline-secondary" onclick="sendPtzCommand('zoom-out')">
+                                                <i class="bi bi-zoom-out"></i> Zoom -
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Presets -->
+                            <div class="col-lg-6">
+                                <div class="card h-100">
+                                    <div class="card-header bg-success text-white">
+                                        <h5 class="card-title mb-0"><i class="bi bi-geo-alt"></i> Presets</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <div id="presets-container" class="preset-container">
+                                            <div class="d-flex justify-content-center">
+                                                <div class="spinner-border text-primary" role="status">
+                                                    <span class="visually-hidden">Chargement des presets...</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Configuration PTZ -->
+                            <div class="col-lg-6">
+                                <div class="card">
+                                    <div class="card-header bg-info text-white">
+                                        <h5 class="card-title mb-0"><i class="bi bi-gear"></i> Configuration PTZ</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="row g-3">
+                                            <div class="col-md-6">
+                                                <label for="moveStep" class="form-label">Amplitude mouvement :</label>
+                                                <input type="number" class="form-control" id="moveStep" value="0.02" min="0.01" max="1.0" step="0.01">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label for="zoomStep" class="form-label">Amplitude zoom :</label>
+                                                <input type="number" class="form-control" id="zoomStep" value="0.15" min="0.01" max="1.0" step="0.01">
+                                            </div>
+                                            <div class="col-12">
+                                                <button class="btn btn-secondary" onclick="updateConfig()">
+                                                    <i class="bi bi-arrow-clockwise"></i> Mettre à jour la config
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Logs MQTT -->
+                            <div class="col-lg-6">
+                                <div class="card">
+                                    <div class="card-header bg-dark text-white">
+                                        <h5 class="card-title mb-0"><i class="bi bi-terminal"></i> Logs MQTT</h5>
+                                    </div>
+                                    <div class="card-body p-0">
+                                        <div id="logs" class="log-container p-3">En attente de connexion MQTT...</div>
+                                    </div>
+                                    <div class="card-footer">
+                                        <button class="btn btn-outline-danger btn-sm" onclick="clearLogs()">
+                                            <i class="bi bi-trash"></i> Effacer les logs
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
+
+                    <!-- Bootstrap JS -->
+                    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
                     <script>
                         const cameraId = '${process.env.TEST_CAMERA_ID || 'camera_cours0'}';
@@ -118,18 +196,27 @@ class OnvifTestClient {
                             container.innerHTML = '';
                             
                             if (Object.keys(presets).length === 0) {
-                                container.innerHTML = '<p>Aucun preset disponible</p>';
+                                container.innerHTML = '<div class="alert alert-warning" role="alert"><i class="bi bi-exclamation-triangle"></i> Aucun preset disponible</div>';
                                 return;
                             }
                             
+                            const row = document.createElement('div');
+                            row.className = 'row g-2';
+                            
                             for (const [name, id] of Object.entries(presets)) {
+                                const col = document.createElement('div');
+                                col.className = 'col-md-6 col-lg-4';
+                                
                                 const button = document.createElement('button');
-                                button.className = 'preset-btn';
+                                button.className = 'btn btn-success w-100';
                                 button.onclick = () => sendPresetCommand(id, name);
-                                button.innerHTML = '📍 ' + name;
-                                container.appendChild(button);
+                                button.innerHTML = '<i class="bi bi-geo-alt-fill"></i> ' + name;
+                                
+                                col.appendChild(button);
+                                row.appendChild(col);
                             }
                             
+                            container.appendChild(row);
                             addLog('Presets mis à jour: ' + Object.keys(presets).join(', '));
                         }
 
@@ -148,16 +235,20 @@ class OnvifTestClient {
                         }
 
                         async function sendPresetCommand(presetId, presetName = null) {
+                            console.log('🎯 sendPresetCommand appelée avec presetId:', presetId, 'presetName:', presetName);
                             try {
                                 const response = await fetch('/api/preset', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ presetId })
                                 });
+                                console.log('📡 Réponse API reçue:', response.status);
                                 const result = await response.json();
+                                console.log('📄 Résultat API:', result);
                                 const displayName = presetName || 'Preset ' + presetId;
                                 addLog(displayName + ': ' + (result.success ? 'Activé' : 'Échec'));
                             } catch (error) {
+                                console.error('❌ Erreur sendPresetCommand:', error);
                                 addLog('Erreur preset: ' + error.message);
                             }
                         }
@@ -184,18 +275,15 @@ class OnvifTestClient {
                             try {
                                 const response = await fetch('/api/status');
                                 const status = await response.json();
-                                const statusDiv = document.getElementById('status');
+                                const statusBadge = document.getElementById('status-badge');
                                 if (status.connected) {
-                                    statusDiv.textContent = 'Connecté au broker MQTT';
-                                    statusDiv.className = 'connected';
+                                    statusBadge.innerHTML = '<span class="badge bg-success status-badge"><i class="bi bi-wifi"></i> Connecté au broker MQTT</span>';
                                 } else {
-                                    statusDiv.textContent = 'Déconnecté du broker MQTT';
-                                    statusDiv.className = 'disconnected';
+                                    statusBadge.innerHTML = '<span class="badge bg-danger status-badge"><i class="bi bi-wifi-off"></i> Déconnecté du broker MQTT</span>';
                                 }
                             } catch (error) {
-                                const statusDiv = document.getElementById('status');
-                                statusDiv.textContent = 'Erreur de connexion au serveur de test';
-                                statusDiv.className = 'disconnected';
+                                const statusBadge = document.getElementById('status-badge');
+                                statusBadge.innerHTML = '<span class="badge bg-warning status-badge"><i class="bi bi-exclamation-triangle"></i> Erreur de connexion au serveur</span>';
                             }
                         }, 2000);
 
@@ -209,10 +297,11 @@ class OnvifTestClient {
                             }
                         }
 
-                        // Charger les presets au démarrage et les rafraîchir périodiquement
+                        // Charger les presets au démarrage uniquement (version 2.0)
                         window.addEventListener('load', () => {
+                            console.log('🔄 Chargement initial des presets - pas de polling');
                             loadPresets();
-                            setInterval(loadPresets, 5000); // Rafraîchir toutes les 5 secondes
+                            // Les presets seront automatiquement mis à jour via MQTT côté serveur
                         });
 
                         addLog('Interface de test chargée');
@@ -248,12 +337,17 @@ class OnvifTestClient {
         // API pour envoyer des commandes de preset
         this.app.post('/api/preset', (req, res) => {
             const { presetId } = req.body;
+            console.log(`🎯 API Preset appelée avec presetId: ${presetId}`);
+            console.log(`📡 MQTT connecté: ${this.isConnected}`);
+            
             if (this.isConnected && presetId) {
                 const topic = `onvif2mqtt/${process.env.TEST_CAMERA_ID}/goPreset`;
-                this.mqttClient.publish(topic, presetId);
-                console.log(`Preset activé: ${presetId}`);
+                console.log(`📤 Publication MQTT sur topic: ${topic} avec valeur: ${presetId}`);
+                this.mqttClient.publish(topic, String(presetId)); // Conversion en string
+                console.log(`✅ Preset activé: ${presetId}`);
                 res.json({ success: true, presetId });
             } else {
+                console.log(`❌ Échec preset: MQTT=${this.isConnected}, presetId=${presetId}`);
                 res.status(400).json({ success: false, error: 'MQTT non connecté ou preset manquant' });
             }
         });
