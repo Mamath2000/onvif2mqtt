@@ -94,25 +94,29 @@ class OnvifManager {
     }
 
     // Fonctions PTZ
-    async moveCameraPTZ(name, direction, speed = 0.5) {
+    async moveCameraPTZ(name, direction, speed = null) {
         const camera = this.cameras.get(name);
         if (!camera || !camera.isConnected) {
             return false;
         }
 
+        // Utiliser la vitesse configurée si aucune vitesse n'est spécifiée
+        const defaultSpeed = parseFloat(process.env.PTZ_DEFAULT_SPEED) || 0.5;
+        const moveSpeed = speed !== null ? speed : defaultSpeed;
+
         switch (direction.toLowerCase()) {
             case 'up':
-                return await camera.moveUp(speed);
+                return await camera.moveUp(moveSpeed);
             case 'down':
-                return await camera.moveDown(speed);
+                return await camera.moveDown(moveSpeed);
             case 'left':
-                return await camera.moveLeft(speed);
+                return await camera.moveLeft(moveSpeed);
             case 'right':
-                return await camera.moveRight(speed);
+                return await camera.moveRight(moveSpeed);
             case 'zoom_in':
-                return await camera.zoomIn(speed);
+                return await camera.zoomIn(moveSpeed);
             case 'zoom_out':
-                return await camera.zoomOut(speed);
+                return await camera.zoomOut(moveSpeed);
             default:
                 return false;
         }

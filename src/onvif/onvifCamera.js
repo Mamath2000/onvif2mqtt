@@ -195,27 +195,33 @@ class OnvifCamera {
 
     // Fonctions PTZ (Pan-Tilt-Zoom)
     async moveUp(speed = 0.5) {
-        return this.ptzMove({ y: speed });
+        const moveStep = (parseFloat(process.env.PTZ_MOVE_STEP) || 0.1) * 1.5;
+        return this.ptzMove({ y: moveStep });
     }
 
     async moveDown(speed = 0.5) {
-        return this.ptzMove({ y: -speed });
+        const moveStep = (parseFloat(process.env.PTZ_MOVE_STEP) || 0.1) * 1.5;
+        return this.ptzMove({ y: -moveStep });
     }
 
     async moveLeft(speed = 0.5) {
-        return this.ptzMove({ x: -speed });
+        const moveStep = parseFloat(process.env.PTZ_MOVE_STEP) || 0.1;
+        return this.ptzMove({ x: -moveStep });
     }
 
     async moveRight(speed = 0.5) {
-        return this.ptzMove({ x: speed });
+        const moveStep = parseFloat(process.env.PTZ_MOVE_STEP) || 0.1;
+        return this.ptzMove({ x: moveStep });
     }
 
     async zoomIn(speed = 0.5) {
-        return this.ptzMove({ zoom: speed });
+        const zoomStep = parseFloat(process.env.PTZ_ZOOM_STEP) || 0.15;
+        return this.ptzMove({ zoom: zoomStep });
     }
 
     async zoomOut(speed = 0.5) {
-        return this.ptzMove({ zoom: -speed });
+        const zoomStep = parseFloat(process.env.PTZ_ZOOM_STEP) || 0.15;
+        return this.ptzMove({ zoom: -zoomStep });
     }
 
     async ptzMove(direction, profileIndex = 0) {
@@ -231,18 +237,55 @@ class OnvifCamera {
                 zoom: direction.zoom || 0
             };
 
-            await new Promise((resolve, reject) => {
-                this.device.continuousMove(options, (err) => {
-                    if (err) {
-                        reject(err);
+            // Essayer d'abord relativeMove (mouvement relatif - plus approprié)
+            try {
+                await new Promise((resolve, reject) => {
+                    if (typeof this.device.relativeMove === 'function') {
+                        this.device.relativeMove(options, (err) => {
+                            if (err) {
+                                reject(err);
+                            } else {
+                                resolve();
+                            }
+                        });
                     } else {
-                        resolve();
+                        reject(new Error('relativeMove non disponible'));
                     }
                 });
-            });
-            
-            logger.debug(`Mouvement PTZ exécuté pour ${this.name}:`, direction);
-            return true;
+                
+                logger.debug(`Mouvement PTZ relatif exécuté pour ${this.name}:`, direction);
+                return true;
+            } catch (error) {
+                logger.error(`Erreur lors du mouvement PTZ pour ${this.name}:`, error);
+                return false;
+            }                
+            // } catch (relativeError) {
+            //     logger.debug(`relativeMove échoué pour ${this.name}, essai avec continuousMove:`, relativeError.message);
+                
+            //     // Fallback vers continuousMove si relativeMove n'est pas disponible
+            //     await new Promise((resolve, reject) => {
+            //         this.device.continuousMove(options, (err) => {
+            //             if (err) {
+            //                 reject(err);
+            //             } else {
+            //                 resolve();
+            //             }
+            //         });
+            //     });
+                
+            //     // Si on utilise continuousMove, on doit arrêter après un délai court
+            //     setTimeout(async () => {
+            //         try {
+            //             await this.ptzStop();
+            //             logger.debug(`Arrêt automatique après continuousMove pour ${this.name}`);
+            //         } catch (error) {
+            //             logger.error(`Erreur lors de l'arrêt automatique pour ${this.name}:`, error);
+            //         }
+            //     }, 200); // Délai court pour un petit mouvement
+                
+            //     logger.debug(`Mouvement PTZ continu exécuté pour ${this.name}:`, direction);
+            //     return true;
+            // }
         } catch (error) {
             logger.error(`Erreur lors du mouvement PTZ pour ${this.name}:`, error);
             return false;
@@ -382,14 +425,8 @@ class OnvifCamera {
                         }
                     });
                 } catch (error2) {
-                    logger.debug(`Méthode ptzGotoPreset échouée pour ${this.name}:`, error2.message);
-                    
-                    // Si aucune méthode ne fonctionne, simuler le succès pour les presets par défaut
-                    if (['1', '2', '3'].includes(presetToken)) {
-                        logger.info(`Simulation de l'activation du preset ${presetToken} pour ${this.name}`);
-                    } else {
-                        throw new Error('Aucune méthode de goto preset disponible');
-                    }
+                    logger.error(`Méthode ptzGotoPreset échouée pour ${this.name}:`, error2.message);
+                    return false;
                 }
             }
             

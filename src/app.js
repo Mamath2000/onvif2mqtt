@@ -2,51 +2,44 @@ require('dotenv').config();
 const logger = require('./utils/logger');
 const MqttManager = require('./mqtt/mqttManager');
 const OnvifManager = require('./onvif/onvifManager');
-const HttpServer = require('./http/httpServer');
 
-class OnvifMqttController {
+class OnvifMqttGateway {
     constructor() {
         this.mqttManager = null;
         this.onvifManager = null;
-        this.httpServer = null;
         this.isRunning = false;
     }
 
     async init() {
         try {
-            logger.info('Initialisation du contrôleur ONVIF-MQTT...');
+            logger.info('Initialisation de la gateway ONVIF-MQTT...');
 
             // Configuration MQTT
             const mqttConfig = {
                 brokerUrl: process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883',
                 username: process.env.MQTT_USERNAME,
                 password: process.env.MQTT_PASSWORD,
-                clientId: process.env.MQTT_CLIENT_ID || 'onvif-controller',
+                clientId: process.env.MQTT_CLIENT_ID || 'onvif-gateway',
                 discoveryPrefix: process.env.HA_DISCOVERY_PREFIX || 'homeassistant',
-                deviceName: process.env.HA_DEVICE_NAME || 'ONVIF Controller',
-                deviceId: process.env.HA_DEVICE_ID || 'onvif_controller'
+                deviceName: process.env.HA_DEVICE_NAME || 'ONVIF Gateway',
+                deviceId: process.env.HA_DEVICE_ID || 'onvif_gateway'
             };
 
             // Initialiser les gestionnaires
             this.mqttManager = new MqttManager(mqttConfig);
             this.onvifManager = new OnvifManager();
-            this.httpServer = new HttpServer(this.onvifManager, this.mqttManager);
 
             // Configurer les événements MQTT
             this.mqttManager.on('cameraCommand', this.handleMqttCommand.bind(this));
-            this.mqttManager.on('ptzCommand', this.handlePtzCommand.bind(this)); // Nouveau gestionnaire PTZ
+            this.mqttManager.on('ptzCommand', this.handlePtzCommand.bind(this));
 
             // Se connecter au broker MQTT
             await this.mqttManager.connect();
 
             // Charger les caméras depuis les variables d'environnement
             this.loadCamerasFromEnv();
-
-            // Démarrer le serveur HTTP
-            const httpPort = process.env.HTTP_PORT || 3000;
-            await this.httpServer.start(httpPort);
-
-            // Démarrer la surveillance des statuts
+            
+            // Démarrer la surveillance des statuts avec l'intervalle configuré
             const updateInterval = parseInt(process.env.STATUS_UPDATE_INTERVAL) || 30000;
             this.onvifManager.startStatusMonitoring(updateInterval, this.onStatusUpdate.bind(this));
 
@@ -244,7 +237,7 @@ class OnvifMqttController {
     }
 
     async shutdown() {
-        logger.info('Arrêt du contrôleur ONVIF-MQTT...');
+        logger.info('Arrêt de la gateway ONVIF-MQTT...');
         
         this.isRunning = false;
 
@@ -256,45 +249,40 @@ class OnvifMqttController {
             this.mqttManager.disconnect();
         }
 
-        if (this.httpServer) {
-            this.httpServer.stop();
-        }
-
-        logger.info('Contrôleur ONVIF-MQTT arrêté');
+        logger.info('Gateway ONVIF-MQTT arrêtée');
     }
-}
-
+    }
 // Fonction principale
 async function main() {
-    const controller = new OnvifMqttController();
+    const gateway = new OnvifMqttGateway();
 
     // Gestion des signaux d'arrêt
     process.on('SIGINT', async () => {
         logger.info('Signal SIGINT reçu, arrêt en cours...');
-        await controller.shutdown();
+        await gateway.shutdown();
         process.exit(0);
     });
 
     process.on('SIGTERM', async () => {
         logger.info('Signal SIGTERM reçu, arrêt en cours...');
-        await controller.shutdown();
+        await gateway.shutdown();
         process.exit(0);
     });
 
     process.on('uncaughtException', (error) => {
         logger.error('Exception non gérée:', error);
-        controller.shutdown().then(() => process.exit(1));
+        gateway.shutdown().then(() => process.exit(1));
     });
 
     process.on('unhandledRejection', (reason, promise) => {
         logger.error('Promesse rejetée non gérée:', reason);
-        controller.shutdown().then(() => process.exit(1));
+        gateway.shutdown().then(() => process.exit(1));
     });
 
     try {
-        await controller.init();
-        logger.info('Application démarrée avec succès');
-        logger.info(`Interface web disponible sur: http://localhost:${process.env.HTTP_PORT || 3000}`);
+        await gateway.init();
+        logger.info('Gateway ONVIF-MQTT démarrée avec succès');
+        logger.info('Passerelle prête à recevoir des commandes MQTT');
     } catch (error) {
         logger.error('Erreur lors du démarrage:', error);
         process.exit(1);
@@ -306,4 +294,4 @@ if (require.main === module) {
     main();
 }
 
-module.exports = OnvifMqttController;
+module.exports = OnvifMqttGateway;
