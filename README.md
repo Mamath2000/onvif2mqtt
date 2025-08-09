@@ -51,7 +51,23 @@ CAMERA_2_NAME=Camera Jardin
 CAMERA_2_HOST=192.168.1.101
 CAMERA_2_USERNAME=admin
 CAMERA_2_PASSWORD=password
+
+# Configuration PTZ
+PTZ_MOVE_DURATION=500     # Durée des mouvements en ms
+PTZ_ZOOM_DURATION=300     # Durée du zoom en ms
 ```
+
+### Configuration PTZ
+
+Les mouvements PTZ sont automatiquement arrêtés après une durée configurable pour éviter les mouvements continus :
+
+- **PTZ_MOVE_DURATION** : Durée des mouvements pan/tilt en millisecondes (défaut: 500ms)
+- **PTZ_ZOOM_DURATION** : Durée des mouvements de zoom en millisecondes (défaut: 300ms)
+
+💡 **Ajustez ces valeurs selon vos besoins :**
+- Valeurs faibles (200-400ms) : Mouvements précis, petits pas
+- Valeurs moyennes (500-800ms) : Équilibre entre précision et rapidité  
+- Valeurs élevées (1000ms+) : Mouvements plus amples
 
 ### Configuration MQTT pour Home Assistant
 
@@ -185,8 +201,32 @@ En plus de l'intégration Home Assistant, l'application propose une structure MQ
 |-------|------|-------------|---------|---------|
 | `onvif2mqtt/{cam_id}/lwt` | État | Statut en ligne de la caméra | `online` / `offline` | `onvif2mqtt/camera_salon/lwt` |
 | `onvif2mqtt/{cam_id}/presetListId` | État | Liste des presets (nom/ID) | JSON object | `{"Cours":1,"Terrasse":2,"Potager":3}` |
-| `onvif2mqtt/{cam_id}/move` | Commande | Mouvement PTZ | `left` / `right` / `up` / `down` | `onvif2mqtt/camera_salon/move` |
-| `onvif2mqtt/{cam_id}/zoom` | Commande | Zoom PTZ | `+` / `-` | `onvif2mqtt/camera_salon/zoom` |
+| `onvif2mqtt/{cam_id}/cmd` | Commande | Commandes PTZ unifiées | `move-left` / `move-right` / `move-up` / `move-down` / `zoom-in` / `zoom-out` | `onvif2mqtt/camera_salon/cmd` |
+
+### Configuration des amplitudes PTZ
+
+Les amplitudes de déplacement PTZ sont configurables via des variables d'environnement ou l'API REST :
+
+#### Variables d'environnement
+```bash
+PTZ_MOVE_STEP=0.1          # Amplitude pour les mouvements (0.01-1.0)
+PTZ_ZOOM_STEP=0.15         # Amplitude pour le zoom (0.01-1.0)  
+PTZ_DEFAULT_SPEED=0.5      # Vitesse par défaut (0.01-1.0)
+```
+
+#### API REST
+- **GET** `/api/ptz/config` - Récupérer la configuration actuelle
+- **POST** `/api/ptz/config` - Modifier la configuration
+
+Exemple de modification :
+```bash
+curl -X POST http://localhost:3000/api/ptz/config \
+  -H "Content-Type: application/json" \
+  -d '{"moveStep": 0.2, "zoomStep": 0.1, "defaultSpeed": 0.6}'
+```
+
+#### Interface Web
+Une section **Configuration PTZ** est disponible dans l'interface web (`http://localhost:3000`) pour ajuster les paramètres en temps réel.
 | `onvif2mqtt/{cam_id}/goPreset` | Commande | Aller à un preset | ID du preset | `onvif2mqtt/camera_salon/goPreset` |
 
 #### Exemples d'utilisation ONVIF2MQTT
@@ -199,12 +239,14 @@ mosquitto_sub -h localhost -t "onvif2mqtt/camera_salon/lwt"
 mosquitto_sub -h localhost -t "onvif2mqtt/camera_salon/presetListId"
 
 # Contrôler le mouvement PTZ
-mosquitto_pub -h localhost -t "onvif2mqtt/camera_salon/move" -m "up"
-mosquitto_pub -h localhost -t "onvif2mqtt/camera_salon/move" -m "left"
+mosquitto_pub -h localhost -t "onvif2mqtt/camera_salon/cmd" -m "move-up"
+mosquitto_pub -h localhost -t "onvif2mqtt/camera_salon/cmd" -m "move-left"
+mosquitto_pub -h localhost -t "onvif2mqtt/camera_salon/cmd" -m "move-right"
+mosquitto_pub -h localhost -t "onvif2mqtt/camera_salon/cmd" -m "move-down"
 
 # Contrôler le zoom
-mosquitto_pub -h localhost -t "onvif2mqtt/camera_salon/zoom" -m "+"
-mosquitto_pub -h localhost -t "onvif2mqtt/camera_salon/zoom" -m "-"
+mosquitto_pub -h localhost -t "onvif2mqtt/camera_salon/cmd" -m "zoom-in"
+mosquitto_pub -h localhost -t "onvif2mqtt/camera_salon/cmd" -m "zoom-out"
 
 # Aller à un preset
 mosquitto_pub -h localhost -t "onvif2mqtt/camera_salon/goPreset" -m "1"
@@ -244,7 +286,8 @@ client.on_message = on_message
 client.connect("localhost", 1883, 60)
 
 # Exemples de commandes
-client.publish("onvif2mqtt/camera_salon/move", "up")
+client.publish("onvif2mqtt/camera_salon/cmd", "move-up")
+client.publish("onvif2mqtt/camera_salon/cmd", "zoom-in")
 client.publish("onvif2mqtt/camera_salon/goPreset", "1")  # Utiliser l'ID du preset souhaité
 
 client.loop_forever()
