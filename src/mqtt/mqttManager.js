@@ -119,10 +119,9 @@ class MqttManager {
         cameras.forEach(camera => {
             const cameraId = camera.name.toLowerCase().replace(/\s+/g, '_');
             
-            // Topics de commande
+            // Topics de commande simplifiés
             const commandTopics = [
-                `${this.onvif2mqttPrefix}/${cameraId}/move`,
-                `${this.onvif2mqttPrefix}/${cameraId}/zoom`, 
+                `${this.onvif2mqttPrefix}/${cameraId}/cmd`,
                 `${this.onvif2mqttPrefix}/${cameraId}/goPreset`
             ];
 
@@ -279,24 +278,9 @@ class MqttManager {
             logger.debug(`Commande onvif2mqtt reçue - Caméra: ${cameraId}, Commande: ${command}, Message: ${message}`);
             
             switch (command) {
-                case 'move':
-                    // message: left/right/up/down
-                    this.emit('ptzCommand', {
-                        cameraId,
-                        command: 'move',
-                        direction: message,
-                        speed: 0.5 // vitesse par défaut
-                    });
-                    break;
-                    
-                case 'zoom':
-                    // message: +/-
-                    this.emit('ptzCommand', {
-                        cameraId,
-                        command: 'zoom',
-                        direction: message === '+' ? 'in' : 'out',
-                        speed: 0.5
-                    });
+                case 'cmd':
+                    // message: move-left, move-right, move-up, move-down, zoom-in, zoom-out
+                    this.handlePtzCmd(cameraId, message);
                     break;
                     
                 case 'goPreset':
@@ -311,6 +295,48 @@ class MqttManager {
                 default:
                     logger.warn(`Commande onvif2mqtt inconnue: ${command}`);
             }
+        }
+    }
+
+    // Gérer les commandes PTZ via le topic cmd
+    handlePtzCmd(cameraId, cmdMessage) {
+        const cmdParts = cmdMessage.split('-');
+        
+        if (cmdParts.length >= 2) {
+            const action = cmdParts[0]; // move ou zoom
+            const direction = cmdParts[1]; // left, right, up, down, in, out
+            
+            if (action === 'move') {
+                // move-left, move-right, move-up, move-down
+                if (['left', 'right', 'up', 'down'].includes(direction)) {
+                    const defaultSpeed = parseFloat(process.env.PTZ_DEFAULT_SPEED) || 0.5;
+                    this.emit('ptzCommand', {
+                        cameraId,
+                        command: 'move',
+                        direction: direction,
+                        speed: defaultSpeed
+                    });
+                } else {
+                    logger.warn(`Direction de mouvement invalide: ${direction}`);
+                }
+            } else if (action === 'zoom') {
+                // zoom-in, zoom-out
+                if (['in', 'out'].includes(direction)) {
+                    const defaultSpeed = parseFloat(process.env.PTZ_DEFAULT_SPEED) || 0.5;
+                    this.emit('ptzCommand', {
+                        cameraId,
+                        command: 'zoom',
+                        direction: direction,
+                        speed: defaultSpeed
+                    });
+                } else {
+                    logger.warn(`Direction de zoom invalide: ${direction}`);
+                }
+            } else {
+                logger.warn(`Action PTZ inconnue: ${action}`);
+            }
+        } else {
+            logger.warn(`Format de commande PTZ invalide: ${cmdMessage}. Attendu: action-direction (ex: move-left, zoom-in)`);
         }
     }
 

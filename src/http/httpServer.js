@@ -145,6 +145,65 @@ class HttpServer {
             }
         });
 
+        // Routes pour la configuration PTZ
+        this.app.get('/api/ptz/config', (req, res) => {
+            try {
+                const config = {
+                    moveStep: parseFloat(process.env.PTZ_MOVE_STEP) || 0.1,
+                    zoomStep: parseFloat(process.env.PTZ_ZOOM_STEP) || 0.15,
+                    defaultSpeed: parseFloat(process.env.PTZ_DEFAULT_SPEED) || 0.5
+                };
+                res.json(config);
+            } catch (error) {
+                res.status(500).json({ error: error.message });
+            }
+        });
+
+        this.app.post('/api/ptz/config', (req, res) => {
+            try {
+                const { moveStep, zoomStep, defaultSpeed } = req.body;
+                
+                // Validation des valeurs (entre 0.01 et 1.0)
+                if (moveStep !== undefined) {
+                    const move = parseFloat(moveStep);
+                    if (move >= 0.01 && move <= 1.0) {
+                        process.env.PTZ_MOVE_STEP = move.toString();
+                    } else {
+                        return res.status(400).json({ error: 'moveStep doit être entre 0.01 et 1.0' });
+                    }
+                }
+                
+                if (zoomStep !== undefined) {
+                    const zoom = parseFloat(zoomStep);
+                    if (zoom >= 0.01 && zoom <= 1.0) {
+                        process.env.PTZ_ZOOM_STEP = zoom.toString();
+                    } else {
+                        return res.status(400).json({ error: 'zoomStep doit être entre 0.01 et 1.0' });
+                    }
+                }
+                
+                if (defaultSpeed !== undefined) {
+                    const speed = parseFloat(defaultSpeed);
+                    if (speed >= 0.01 && speed <= 1.0) {
+                        process.env.PTZ_DEFAULT_SPEED = speed.toString();
+                    } else {
+                        return res.status(400).json({ error: 'defaultSpeed doit être entre 0.01 et 1.0' });
+                    }
+                }
+                
+                const newConfig = {
+                    moveStep: parseFloat(process.env.PTZ_MOVE_STEP),
+                    zoomStep: parseFloat(process.env.PTZ_ZOOM_STEP),
+                    defaultSpeed: parseFloat(process.env.PTZ_DEFAULT_SPEED)
+                };
+                
+                logger.info('Configuration PTZ mise à jour:', newConfig);
+                res.json(newConfig);
+            } catch (error) {
+                res.status(500).json({ error: error.message });
+            }
+        });
+
         // Route pour les streams
         this.app.get('/api/cameras/:name/stream', async (req, res) => {
             try {
@@ -337,6 +396,37 @@ class HttpServer {
                             </div>
                             <button type="submit" style="margin-top: 10px;">➕ Ajouter la caméra</button>
                         </form>
+                    </div>
+
+                    <div class="form-section">
+                        <h2>⚙️ Configuration PTZ</h2>
+                        <div id="ptz-config">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                                <div>
+                                    <label for="moveStep">Amplitude mouvement:</label>
+                                    <input type="number" id="moveStep" min="0.01" max="1.0" step="0.01" 
+                                           style="width: 100%; margin-top: 5px;">
+                                    <small style="color: #666;">Déplacement (0.01-1.0)</small>
+                                </div>
+                                <div>
+                                    <label for="zoomStep">Amplitude zoom:</label>
+                                    <input type="number" id="zoomStep" min="0.01" max="1.0" step="0.01" 
+                                           style="width: 100%; margin-top: 5px;">
+                                    <small style="color: #666;">Zoom (0.01-1.0)</small>
+                                </div>
+                                <div>
+                                    <label for="defaultSpeed">Vitesse par défaut:</label>
+                                    <input type="number" id="defaultSpeed" min="0.01" max="1.0" step="0.01" 
+                                           style="width: 100%; margin-top: 5px;">
+                                    <small style="color: #666;">Vitesse générale (0.01-1.0)</small>
+                                </div>
+                            </div>
+                            <div style="text-align: center;">
+                                <button onclick="loadPtzConfig()" style="margin-right: 10px;">🔄 Charger</button>
+                                <button onclick="savePtzConfig()" style="background-color: #28a745;">💾 Sauvegarder</button>
+                            </div>
+                            <div id="ptz-status" style="margin-top: 10px; padding: 10px; border-radius: 4px; display: none;"></div>
+                        </div>
                     </div>
 
                     <div class="form-section">
@@ -755,8 +845,76 @@ class HttpServer {
                             }
                         });
 
+                        // Fonctions de configuration PTZ
+                        async function loadPtzConfig() {
+                            try {
+                                const response = await fetch('/api/ptz/config');
+                                const config = await response.json();
+                                
+                                document.getElementById('moveStep').value = config.moveStep;
+                                document.getElementById('zoomStep').value = config.zoomStep;
+                                document.getElementById('defaultSpeed').value = config.defaultSpeed;
+                                
+                                showPtzStatus('✅ Configuration chargée', 'success');
+                            } catch (error) {
+                                console.error('Erreur lors du chargement de la config PTZ:', error);
+                                showPtzStatus('❌ Erreur lors du chargement: ' + error.message, 'error');
+                            }
+                        }
+
+                        async function savePtzConfig() {
+                            try {
+                                const config = {
+                                    moveStep: parseFloat(document.getElementById('moveStep').value),
+                                    zoomStep: parseFloat(document.getElementById('zoomStep').value),
+                                    defaultSpeed: parseFloat(document.getElementById('defaultSpeed').value)
+                                };
+                                
+                                // Validation
+                                for (const [key, value] of Object.entries(config)) {
+                                    if (isNaN(value) || value < 0.01 || value > 1.0) {
+                                        showPtzStatus(\`❌ \${key} doit être entre 0.01 et 1.0\`, 'error');
+                                        return;
+                                    }
+                                }
+                                
+                                const response = await fetch('/api/ptz/config', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify(config)
+                                });
+                                
+                                const result = await response.json();
+                                
+                                if (response.ok) {
+                                    showPtzStatus('✅ Configuration sauvegardée avec succès!', 'success');
+                                } else {
+                                    showPtzStatus('❌ Erreur: ' + result.error, 'error');
+                                }
+                            } catch (error) {
+                                console.error('Erreur lors de la sauvegarde de la config PTZ:', error);
+                                showPtzStatus('❌ Erreur lors de la sauvegarde: ' + error.message, 'error');
+                            }
+                        }
+
+                        function showPtzStatus(message, type) {
+                            const statusDiv = document.getElementById('ptz-status');
+                            statusDiv.textContent = message;
+                            statusDiv.style.display = 'block';
+                            statusDiv.style.backgroundColor = type === 'success' ? '#d4edda' : '#f8d7da';
+                            statusDiv.style.color = type === 'success' ? '#155724' : '#721c24';
+                            statusDiv.style.border = type === 'success' ? '1px solid #c3e6cb' : '1px solid #f5c6cb';
+                            
+                            setTimeout(() => {
+                                statusDiv.style.display = 'none';
+                            }, 3000);
+                        }
+
                         // Charger les caméras au démarrage
                         loadCameras();
+                        
+                        // Charger la config PTZ au démarrage
+                        loadPtzConfig();
                         
                         // Actualiser toutes les 30 secondes
                         setInterval(loadCameras, 30000);

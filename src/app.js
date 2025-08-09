@@ -203,7 +203,7 @@ class OnvifMqttController {
                     break;
 
                 case 'zoom':
-                    // direction: in/out (converti depuis +/-)
+                    // direction: in/out
                     logger.info(`PTZ Zoom ${direction} pour ${camera.name}`);
                     const zoomDirection = direction === 'in' ? 'zoom_in' : 'zoom_out';
                     const zoomResult = await this.onvifManager.moveCameraPTZ(camera.name, zoomDirection, speed || 0.5);
