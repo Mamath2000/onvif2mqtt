@@ -1,0 +1,39 @@
+# Fichiers de logs
+logs/
+*.log
+
+# Dépendances Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Variables d'environnement
+.env
+
+# Fichiers temporaires
+.tmp/
+.cache/
+
+# Fichiers système
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build
+dist/
+build/
+
+# Coverage
+coverage/
+
+# Runtime
+pids
+*.pid
+*.seed
+*.pid.lock
