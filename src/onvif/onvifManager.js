@@ -166,43 +166,43 @@ class OnvifManager {
         }
     }
 
-    // Découverte automatique des caméras ONVIF
-    async discoverCameras(timeout = 5000) {
-        try {
-            logger.info('Recherche de caméras ONVIF sur le réseau...');
+    // // Découverte automatique des caméras ONVIF
+    // async discoverCameras(timeout = 5000) {
+    //     try {
+    //         logger.info('Recherche de caméras ONVIF sur le réseau...');
             
-            const onvif = require('onvif');
-            const devices = await new Promise((resolve, reject) => {
-                const foundDevices = [];
+    //         const onvif = require('onvif');
+    //         const devices = await new Promise((resolve, reject) => {
+    //             const foundDevices = [];
                 
-                onvif.Discovery.on('device', (cam, rinfo, xml) => {
-                    foundDevices.push({
-                        address: rinfo.address,
-                        port: 80,
-                        name: `Camera_${rinfo.address}`,
-                        xaddr: cam.xaddrs ? cam.xaddrs[0] : `http://${rinfo.address}/onvif/device_service`
-                    });
-                });
+    //             onvif.Discovery.on('device', (cam, rinfo, xml) => {
+    //                 foundDevices.push({
+    //                     address: rinfo.address,
+    //                     port: 80,
+    //                     name: `Camera_${rinfo.address}`,
+    //                     xaddr: cam.xaddrs ? cam.xaddrs[0] : `http://${rinfo.address}/onvif/device_service`
+    //                 });
+    //             });
 
-                onvif.Discovery.on('error', (error) => {
-                    logger.warn('Erreur durant la découverte:', error);
-                });
+    //             onvif.Discovery.on('error', (error) => {
+    //                 logger.warn('Erreur durant la découverte:', error);
+    //             });
 
-                onvif.Discovery.probe();
+    //             onvif.Discovery.probe();
 
-                setTimeout(() => {
-                    resolve(foundDevices);
-                }, timeout);
-            });
+    //             setTimeout(() => {
+    //                 resolve(foundDevices);
+    //             }, timeout);
+    //         });
 
-            logger.info(`${devices.length} caméras ONVIF découvertes`);
-            return devices;
+    //         logger.info(`${devices.length} caméras ONVIF découvertes`);
+    //         return devices;
             
-        } catch (error) {
-            logger.error('Erreur lors de la découverte des caméras:', error);
-            return [];
-        }
-    }
+    //     } catch (error) {
+    //         logger.error('Erreur lors de la découverte des caméras:', error);
+    //         return [];
+    //     }
+    // }
 
     // Démarrer la surveillance périodique des statuts
     startStatusMonitoring(intervalMs = 30000, onStatusUpdate = null) {

@@ -376,13 +376,8 @@ class OnvifCamera {
                 } catch (error2) {
                     logger.debug(`Méthode ptzGetPresets échouée pour ${this.name}:`, error2.message);
                     
-                    // Si aucune méthode ne fonctionne, retourner des presets par défaut
-                    logger.info(`Aucune méthode de récupération des presets disponible pour ${this.name}, utilisation de presets par défaut`);
-                    presets = [
-                        { token: '1', name: 'Position 1' },
-                        { token: '2', name: 'Position 2' },
-                        { token: '3', name: 'Position 3' }
-                    ];
+                    logger.error(`Erreur lors de la récupération des presets pour ${this.name}:`, error);
+                    return [];
                 }
             }
 
