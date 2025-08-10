@@ -132,17 +132,30 @@ class OnvifTestClient {
                                     </div>
                                     <div class="card-body">
                                         <div class="row g-3">
-                                            <div class="col-md-6">
+                                            <div class="col-md-4">
                                                 <label for="moveStep" class="form-label">Amplitude mouvement :</label>
-                                                <input type="number" class="form-control" id="moveStep" value="0.02" min="0.01" max="1.0" step="0.01">
+                                                <input type="number" class="form-control" id="moveStep" value="${process.env.PTZ_MOVE_STEP || '0.02'}" min="0.01" max="1.0" step="0.01">
+                                                <small class="form-text text-muted">Valeur du .env: ${process.env.PTZ_MOVE_STEP || '0.02'}</small>
                                             </div>
-                                            <div class="col-md-6">
+                                            <div class="col-md-4">
                                                 <label for="zoomStep" class="form-label">Amplitude zoom :</label>
-                                                <input type="number" class="form-control" id="zoomStep" value="0.15" min="0.01" max="1.0" step="0.01">
+                                                <input type="number" class="form-control" id="zoomStep" value="${process.env.PTZ_ZOOM_STEP || '0.15'}" min="0.01" max="1.0" step="0.01">
+                                                <small class="form-text text-muted">Valeur du .env: ${process.env.PTZ_ZOOM_STEP || '0.15'}</small>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label for="defaultSpeed" class="form-label">Vitesse par défaut :</label>
+                                                <input type="number" class="form-control" id="defaultSpeed" value="${process.env.PTZ_DEFAULT_SPEED || '0.5'}" min="0.1" max="1.0" step="0.1">
+                                                <small class="form-text text-muted">Valeur du .env: ${process.env.PTZ_DEFAULT_SPEED || '0.5'}</small>
                                             </div>
                                             <div class="col-12">
+                                                <div class="alert alert-info">
+                                                    <i class="bi bi-info-circle"></i> Les modifications ici sont temporaires (test uniquement). Pour modifier définitivement, éditez le fichier .env principal.
+                                                </div>
                                                 <button class="btn btn-secondary" onclick="updateConfig()">
-                                                    <i class="bi bi-arrow-clockwise"></i> Mettre à jour la config
+                                                    <i class="bi bi-arrow-clockwise"></i> Appliquer pour ce test
+                                                </button>
+                                                <button class="btn btn-outline-secondary ms-2" onclick="resetConfig()">
+                                                    <i class="bi bi-arrow-counterclockwise"></i> Remettre valeurs .env
                                                 </button>
                                             </div>
                                         </div>
@@ -256,18 +269,19 @@ class OnvifTestClient {
                         async function updateConfig() {
                             const moveStep = document.getElementById('moveStep').value;
                             const zoomStep = document.getElementById('zoomStep').value;
+                            const defaultSpeed = document.getElementById('defaultSpeed').value;
                             
-                            try {
-                                const response = await fetch('/api/config', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ moveStep: parseFloat(moveStep), zoomStep: parseFloat(zoomStep) })
-                                });
-                                const result = await response.json();
-                                addLog('Config PTZ mise à jour: moveStep=' + moveStep + ', zoomStep=' + zoomStep);
-                            } catch (error) {
-                                addLog('Erreur config: ' + error.message);
-                            }
+                            // Simulation uniquement - pas de sauvegarde réelle
+                            addLog('Config PTZ temporaire appliquée: moveStep=' + moveStep + ', zoomStep=' + zoomStep + ', speed=' + defaultSpeed);
+                            addLog('⚠️ Ces valeurs sont temporaires pour ce test uniquement');
+                        }
+
+                        function resetConfig() {
+                            // Remettre les valeurs du .env
+                            document.getElementById('moveStep').value = '${process.env.PTZ_MOVE_STEP || '0.02'}';
+                            document.getElementById('zoomStep').value = '${process.env.PTZ_ZOOM_STEP || '0.15'}';
+                            document.getElementById('defaultSpeed').value = '${process.env.PTZ_DEFAULT_SPEED || '0.5'}';
+                            addLog('🔄 Valeurs remises depuis le fichier .env');
                         }
 
                         // Vérifier la connexion MQTT toutes les 2 secondes
@@ -350,13 +364,6 @@ class OnvifTestClient {
                 console.log(`❌ Échec preset: MQTT=${this.isConnected}, presetId=${presetId}`);
                 res.status(400).json({ success: false, error: 'MQTT non connecté ou preset manquant' });
             }
-        });
-
-        // API pour la configuration PTZ (simulation)
-        this.app.post('/api/config', (req, res) => {
-            const { moveStep, zoomStep } = req.body;
-            console.log(`Configuration PTZ mise à jour: moveStep=${moveStep}, zoomStep=${zoomStep}`);
-            res.json({ success: true, moveStep, zoomStep });
         });
 
         // API pour vérifier le statut MQTT
