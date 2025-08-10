@@ -278,7 +278,7 @@ class OnvifTestClient {
 
                         function resetConfig() {
                             // Remettre les valeurs du .env
-                            document.getElementById('moveStep').value = '${process.env.PTZ_MOVE_STEP || '0.02'}';
+                            document.getElementById('moveStep').value = '${process.env.PTZ_MOVE_STEP || '0.1'}';
                             document.getElementById('zoomStep').value = '${process.env.PTZ_ZOOM_STEP || '0.15'}';
                             document.getElementById('defaultSpeed').value = '${process.env.PTZ_DEFAULT_SPEED || '0.5'}';
                             addLog('🔄 Valeurs remises depuis le fichier .env');
