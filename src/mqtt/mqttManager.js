@@ -7,6 +7,7 @@ class MqttManager {
         this.config = config;
         this.client = null;
         this.isConnected = false;
+        this.baseTopic = config.baseTopic || 'onvif2mqtt';
         this.deviceConfig = {
             identifiers: [config.deviceId],
             name: config.deviceName,
@@ -14,20 +15,18 @@ class MqttManager {
             manufacturer: "Custom",
             sw_version: "1.0.0"
         };
-        // Nouvelle structure ONVIF2MQTT
-        this.onvif2mqttPrefix = 'onvif2mqtt';
     }
 
     async connect() {
         try {
             const options = {
-                clientId: this.config.clientId || `onvif-controller-${uuidv4()}`,
+                clientId: this.config.clientId,
                 username: this.config.username,
                 password: this.config.password,
                 clean: true,
                 reconnectPeriod: 5000,
                 will: {
-                    topic: `${this.config.discoveryPrefix}/status`,
+                    topic: `${this.baseTopic}/lwt`,
                     payload: 'offline',
                     qos: 1,
                     retain: true
@@ -64,53 +63,53 @@ class MqttManager {
 
     publishStatus(status) {
         if (this.client && this.isConnected) {
-            this.client.publish(`${this.config.discoveryPrefix}/status`, status, { retain: true });
+            this.client.publish(`${this.baseTopic}/lwt`, status, { retain: true });
         }
     }
 
     // === NOUVELLE STRUCTURE ONVIF2MQTT ===
     
-    // Publier le statut LWT d'une caméra
-    publishCameraLWT(camera, status) {
-        const cameraId = camera.name.toLowerCase().replace(/\s+/g, '_');
-        const topic = `${this.onvif2mqttPrefix}/${cameraId}/lwt`;
+    // // Publier le statut LWT d'une caméra
+    // publishCameraLWT(camera, status) {
+    //     const cameraId = camera.name.toLowerCase().replace(/\s+/g, '_');
+    //     const topic = `${this.baseTopic}/${cameraId}/lwt`;
         
-        if (this.client && this.isConnected) {
-            this.client.publish(topic, status, { retain: true, qos: 1 });
-            logger.debug(`LWT publié pour ${camera.name}: ${status}`);
-        }
-    }
+    //     if (this.client && this.isConnected) {
+    //         this.client.publish(topic, status, { retain: true, qos: 1 });
+    //         logger.debug(`LWT publié pour ${camera.name}: ${status}`);
+    //     }
+    // }
 
-    // Publier la liste des presets
-    publishCameraPresets(camera, presets) {
-        const cameraId = camera.name.toLowerCase().replace(/\s+/g, '_');
-        const topic = `${this.onvif2mqttPrefix}/${cameraId}/presetListId`;
+    // // Publier la liste des presets
+    // publishCameraPresets(camera, presets) {
+    //     const cameraId = camera.name.toLowerCase().replace(/\s+/g, '_');
+    //     const topic = `${this.baseTopic}/${cameraId}/presetListId`;
         
-        if (this.client && this.isConnected) {
-            // Convertir les presets en format clé/valeur utilisable
-            let presetList = {};
+    //     if (this.client && this.isConnected) {
+    //         // Convertir les presets en format clé/valeur utilisable
+    //         let presetList = {};
             
-            if (presets && typeof presets === 'object') {
-                if (Array.isArray(presets)) {
-                    // Format tableau: [{name: "Cours", token: 1}, ...]
-                    presets.forEach(preset => {
-                        const name = preset.name || preset.Name || `Preset ${preset.token || preset.Token}`;
-                        const token = preset.token || preset.Token;
-                        if (token !== undefined) {
-                            presetList[name] = token;
-                        }
-                    });
-                } else {
-                    // Format objet: {"Cours": 1, "Terrasse": 2, ...}
-                    presetList = presets;
-                }
-            }
+    //         if (presets && typeof presets === 'object') {
+    //             if (Array.isArray(presets)) {
+    //                 // Format tableau: [{name: "Cours", token: 1}, ...]
+    //                 presets.forEach(preset => {
+    //                     const name = preset.name || preset.Name || `Preset ${preset.token || preset.Token}`;
+    //                     const token = preset.token || preset.Token;
+    //                     if (token !== undefined) {
+    //                         presetList[name] = token;
+    //                     }
+    //                 });
+    //             } else {
+    //                 // Format objet: {"Cours": 1, "Terrasse": 2, ...}
+    //                 presetList = presets;
+    //             }
+    //         }
             
-            const payload = JSON.stringify(presetList);
-            this.client.publish(topic, payload, { retain: true, qos: 1 });
-            logger.debug(`Presets publiés pour ${camera.name}: ${payload}`);
-        }
-    }
+    //         const payload = JSON.stringify(presetList);
+    //         this.client.publish(topic, payload, { retain: true, qos: 1 });
+    //         logger.debug(`Presets publiés pour ${camera.name}: ${payload}`);
+    //     }
+    // }
 
     // S'abonner aux commandes onvif2mqtt pour toutes les caméras
     subscribeToOnvif2MqttCommands(cameras) {
@@ -121,8 +120,8 @@ class MqttManager {
             
             // Topics de commande simplifiés
             const commandTopics = [
-                `${this.onvif2mqttPrefix}/${cameraId}/cmd`,
-                `${this.onvif2mqttPrefix}/${cameraId}/goPreset`
+                `${this.baseTopic}/${cameraId}/cmd`,
+                `${this.baseTopic}/${cameraId}/goPreset`
             ];
 
             commandTopics.forEach(topic => {
@@ -132,89 +131,36 @@ class MqttManager {
         });
     }
 
-    // Publier la configuration de découverte automatique pour Home Assistant
-    publishCameraDiscovery(camera) {
-        const cameraId = camera.name.toLowerCase().replace(/\s+/g, '_');
-        
-        // Configuration pour le switch de la caméra
-        const switchConfig = {
-            name: `${camera.name} Power`,
-            unique_id: `${this.config.deviceId}_${cameraId}_power`,
-            state_topic: `${this.config.discoveryPrefix}/switch/${cameraId}_power/state`,
-            command_topic: `${this.config.discoveryPrefix}/switch/${cameraId}_power/set`,
-            device: {
-                ...this.deviceConfig,
-                name: camera.name
-            },
-            availability_topic: `${this.config.discoveryPrefix}/status`,
-            payload_on: "ON",
-            payload_off: "OFF"
-        };
-
-        // Configuration pour la caméra
-        const cameraConfig = {
-            name: `${camera.name} Stream`,
-            unique_id: `${this.config.deviceId}_${cameraId}_camera`,
-            topic: `${this.config.discoveryPrefix}/camera/${cameraId}/image`,
-            device: {
-                ...this.deviceConfig,
-                name: camera.name
-            },
-            availability_topic: `${this.config.discoveryPrefix}/status`
-        };
-
-        // Configuration pour les capteurs de statut
-        const statusConfig = {
-            name: `${camera.name} Status`,
-            unique_id: `${this.config.deviceId}_${cameraId}_status`,
-            state_topic: `${this.config.discoveryPrefix}/sensor/${cameraId}_status/state`,
-            device: {
-                ...this.deviceConfig,
-                name: camera.name
-            },
-            availability_topic: `${this.config.discoveryPrefix}/status`,
-            icon: "mdi:camera"
-        };
-
-        // Publier les configurations
-        this.client.publish(
-            `${this.config.discoveryPrefix}/switch/${cameraId}_power/config`,
-            JSON.stringify(switchConfig),
-            { retain: true }
-        );
-
-        this.client.publish(
-            `${this.config.discoveryPrefix}/camera/${cameraId}/config`,
-            JSON.stringify(cameraConfig),
-            { retain: true }
-        );
-
-        this.client.publish(
-            `${this.config.discoveryPrefix}/sensor/${cameraId}_status/config`,
-            JSON.stringify(statusConfig),
-            { retain: true }
-        );
-
-        logger.info(`Configuration de découverte publiée pour la caméra: ${camera.name}`);
-    }
 
     // Publier l'état d'une caméra
-    publishCameraState(camera, state) {
+    publishCameraState(camera) {
         const cameraId = camera.name.toLowerCase().replace(/\s+/g, '_');
         
-        // État du switch
+        // État du LWT
         this.client.publish(
-            `${this.config.discoveryPrefix}/switch/${cameraId}_power/state`,
-            state.power ? 'ON' : 'OFF',
+            `${this.baseTopic}/${cameraId}/lwt`,
+            (camera.isConnected ? 'online' : 'offline'),
             { retain: true }
         );
+        if (camera.isConnected) {
 
-        // État du capteur de statut
-        this.client.publish(
-            `${this.config.discoveryPrefix}/sensor/${cameraId}_status/state`,
-            state.status,
-            { retain: true }
-        );
+            // Capabilities - PTZ
+            this.client.publish(
+                `${this.baseTopic}/${cameraId}/capabilities/ptz`,
+                (camera.hasPTZ ? 'true' : 'false'),
+                { retain: true }
+            );
+
+            if (camera.hasPTZ) {
+                const payload = JSON.stringify(camera.presets);
+                this.client.publish(
+                    `${this.baseTopic}/${cameraId}/presets`,
+                    payload,
+                    { retain: true, qos: 1 }
+                );
+                logger.debug(`Presets publiés pour ${camera.name}: ${payload}`);
+            }
+        }
     }
 
     // Publier une image de caméra
@@ -240,7 +186,7 @@ class MqttManager {
         logger.debug(`Message reçu - Topic: ${topic}, Message: ${message}`);
         
         // Gestion des commandes onvif2mqtt
-        if (topic.startsWith(this.onvif2mqttPrefix)) {
+        if (topic.startsWith(this.baseTopic)) {
             this.handleOnvif2MqttCommand(topic, message);
             return;
         }

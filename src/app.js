@@ -2,11 +2,13 @@ require('dotenv').config();
 const logger = require('./utils/logger');
 const MqttManager = require('./mqtt/mqttManager');
 const OnvifManager = require('./onvif/onvifManager');
+const HADiscoveryHelper = require('./ha/HADiscoveryHelper');
 
 class OnvifMqttGateway {
     constructor() {
         this.mqttManager = null;
         this.onvifManager = null;
+        this.haHelper = null;   
         this.isRunning = false;
     }
 
@@ -19,8 +21,8 @@ class OnvifMqttGateway {
                 brokerUrl: process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883',
                 username: process.env.MQTT_USERNAME,
                 password: process.env.MQTT_PASSWORD,
-                clientId: process.env.MQTT_CLIENT_ID || 'onvif-gateway',
-                discoveryPrefix: process.env.HA_DISCOVERY_PREFIX || 'homeassistant',
+                clientId: `${process.env.MQTT_CLIENT_ID || 'onvif-gateway'}-${Math.random().toString().slice(2, 6)}`,
+                baseTopic: process.env.HA_BASE_TOPIC || 'onvif2mqtt',
                 deviceName: process.env.HA_DEVICE_NAME || 'ONVIF Gateway',
                 deviceId: process.env.HA_DEVICE_ID || 'onvif_gateway'
             };
@@ -28,46 +30,60 @@ class OnvifMqttGateway {
             // Initialiser les gestionnaires
             this.mqttManager = new MqttManager(mqttConfig);
             this.onvifManager = new OnvifManager();
-
+            
             // Configurer les événements MQTT
             this.mqttManager.on('cameraCommand', this.handleMqttCommand.bind(this));
             this.mqttManager.on('ptzCommand', this.handlePtzCommand.bind(this));
 
-            // Se connecter au broker MQTT
-            await this.mqttManager.connect();
-
             // Charger les caméras depuis les variables d'environnement
-            this.loadCamerasFromEnv();
+            const cameras = this.getCamerasFromEnv();
+            // Se connecter au broker MQTT en passant la liste des caméras
+            await this.mqttManager.connect();
+            // Ajouter les caméras à l'onvifManager
+            cameras.forEach(camConfig => {
+                this.onvifManager.addCamera(camConfig);
+            });
+            // Connecter les caméras et lancer la suite
+            await this.connectAndSetupCameras();
             
             // Démarrer la surveillance des statuts avec l'intervalle configuré
             const updateInterval = parseInt(process.env.STATUS_UPDATE_INTERVAL) || 30000;
             this.onvifManager.startStatusMonitoring(updateInterval, this.onStatusUpdate.bind(this));
 
+            // Démarrer la découverte des appareils Home Assistant
+            this.haHelper = new HADiscoveryHelper(this.mqttManager.client, {
+                discoveryPrefix: process.env.HA_DISCOVERY_PREFIX || 'homeassistant',
+                baseTopic: mqttConfig.baseTopic
+            });
+            this.haHelper.publishGatewayDevice(
+                    mqttConfig.deviceId,
+                    mqttConfig.deviceName
+            );
+
+            const cameraStatuses = this.onvifManager.getAllCameraStatuses();
+            Object.values(cameraStatuses).forEach(camStatus => {
+                this.haHelper.publishCameraDevice(camStatus);
+            });
+
             this.isRunning = true;
             logger.info('Contrôleur ONVIF-MQTT démarré avec succès');
-
+            
         } catch (error) {
             logger.error('Erreur lors de l\'initialisation:', error);
             throw error;
         }
     }
 
-    loadCamerasFromEnv() {
+    getCamerasFromEnv() {
         const cameras = [];
         let cameraIndex = 1;
-
-        // Charger les caméras depuis les variables d'environnement
         while (true) {
             const name = process.env[`CAMERA_${cameraIndex}_NAME`];
             const host = process.env[`CAMERA_${cameraIndex}_HOST`];
             const port = process.env[`CAMERA_${cameraIndex}_PORT`];
             const username = process.env[`CAMERA_${cameraIndex}_USERNAME`];
             const password = process.env[`CAMERA_${cameraIndex}_PASSWORD`];
-
-            if (!name || !host || !username || !password) {
-                break;
-            }
-
+            if (!name || !host || !username || !password) break;
             cameras.push({
                 name,
                 host,
@@ -75,48 +91,41 @@ class OnvifMqttGateway {
                 username,
                 password
             });
-
             cameraIndex++;
         }
+        return cameras;
+    }
 
+    async connectAndSetupCameras() {
+        const cameras = this.onvifManager.getAllCameras();
         if (cameras.length > 0) {
             logger.info(`Chargement de ${cameras.length} caméra(s) depuis la configuration`);
-            
-            cameras.forEach(config => {
-                this.onvifManager.addCamera(config);
-            });
-
-            // Connecter toutes les caméras
-            this.onvifManager.connectAllCameras().then(async () => {
-                // Publier la configuration de découverte pour Home Assistant
-                this.onvifManager.getAllCameras().forEach(async camera => {
-                    if (camera.isConnected) {
-                        // Home Assistant Discovery
-                        this.mqttManager.publishCameraDiscovery(camera);
-                        this.mqttManager.publishCameraState(camera, camera.getStatus());
-                        
-                        // ONVIF2MQTT Structure
-                        this.mqttManager.publishCameraLWT(camera, 'online');
-                        
-                        // Publier les presets si la caméra supporte PTZ
-                        if (camera.hasPTZ) {
-                            try {
-                                const presets = await this.onvifManager.getCameraPresets(camera.name);
-                                this.mqttManager.publishCameraPresets(camera, presets);
-                            } catch (error) {
-                                logger.warn(`Impossible de charger les presets pour ${camera.name}:`, error.message);
-                            }
-                        }
-                    } else {
-                        // Publier LWT offline pour les caméras non connectées
-                        this.mqttManager.publishCameraLWT(camera, 'offline');
-                    }
-                });
-
-                // S'abonner aux commandes MQTT (Home Assistant + onvif2mqtt)
-                this.mqttManager.subscribeToCommands(this.onvifManager.getAllCameras());
-                this.mqttManager.subscribeToOnvif2MqttCommands(this.onvifManager.getAllCameras());
-            });
+            await this.onvifManager.connectAllCameras();
+            // Publier la configuration de découverte pour Home Assistant
+            for (const camera of cameras) {
+                this.mqttManager.publishCameraState(camera);
+                // if (camera.isConnected) {
+                //     // Home Assistant Discovery
+                //     // this.mqttManager.publishCameraDiscovery(camera);
+                //     // // ONVIF2MQTT Structure
+                //     // this.mqttManager.publishCameraLWT(camera, 'online');
+                //     // // Publier les presets si la caméra supporte PTZ
+                //     // if (camera.hasPTZ) {
+                //     //     try {
+                //     //         const presets = await this.onvifManager.getCameraPresets(camera.name);
+                //     //         this.mqttManager.publishCameraPresets(camera, presets);
+                //     //     } catch (error) {
+                //     //         logger.warn(`Impossible de charger les presets pour ${camera.name}:`, error.message);
+                //     //     }
+                //     // }
+                // } else {
+                //     // Publier LWT offline pour les caméras non connectées
+                //     this.mqttManager.publishCameraLWT(camera, 'offline');
+                // }
+            }
+            // S'abonner aux commandes MQTT (Home Assistant + onvif2mqtt)
+            this.mqttManager.subscribeToCommands(cameras);
+            this.mqttManager.subscribeToOnvif2MqttCommands(cameras);
         } else {
             logger.info('Aucune caméra configurée dans les variables d\'environnement');
         }

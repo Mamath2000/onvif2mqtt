@@ -12,6 +12,7 @@ class OnvifCamera {
         this.isConnected = false;
         this.profiles = [];
         this.capabilities = null;
+        this.presets = {};
     }
 
     async connect() {
@@ -43,16 +44,8 @@ class OnvifCamera {
             await this.getDeviceInformation();
             await this.getProfiles();
             await this.getCapabilities();
-            
-            // Récupérer les presets PTZ
-            try {
-                this.presets = await this.getPtzPresets();
-                logger.info(`${this.presets ? Object.keys(this.presets).length : 0} presets récupérés pour ${this.name}`);
-            } catch (error) {
-                logger.warn(`Impossible de récupérer les presets pour ${this.name}:`, error.message);
-                this.presets = {};
-            }
-            
+            await this.getPtzPresets();
+
             logger.info(`Caméra connectée: ${this.name}`);
             return true;
         } catch (error) {
@@ -334,12 +327,13 @@ class OnvifCamera {
             // Vérifier si la caméra supporte PTZ
             if (!this.capabilities || !this.capabilities.PTZ) {
                 logger.debug(`Caméra ${this.name} ne supporte pas PTZ`);
-                return [];
+                this.presets = {};
+                return {};
             }
 
             // Essayer différentes méthodes pour récupérer les presets
-            let presets = [];
-            
+            let presets = {};
+
             try {
                 // Méthode 1: getPresets
                 presets = await new Promise((resolve, reject) => {
@@ -348,7 +342,7 @@ class OnvifCamera {
                             if (err) {
                                 reject(err);
                             } else {
-                                resolve(result || []);
+                                resolve(result || {});
                             }
                         });
                     } else {
@@ -366,7 +360,7 @@ class OnvifCamera {
                                 if (err) {
                                     reject(err);
                                 } else {
-                                    resolve(result || []);
+                                    resolve(result || {});
                                 }
                             });
                         } else {
@@ -377,16 +371,19 @@ class OnvifCamera {
                     logger.debug(`Méthode ptzGetPresets échouée pour ${this.name}:`, error2.message);
                     
                     logger.error(`Erreur lors de la récupération des presets pour ${this.name}:`, error);
-                    return [];
+                    this.presets = {};
+                    return {};
                 }
             }
 
-            logger.debug(`${presets.length} presets trouvés pour ${this.name}`);
-            return presets || [];
+            this.presets = presets;
+            logger.debug(`${Object.keys(presets).length} presets trouvés pour ${this.name}`);
+            return presets || {};
             
         } catch (error) {
             logger.error(`Erreur lors de la récupération des presets pour ${this.name}:`, error);
-            return [];
+            this.presets = {};
+            return {};
         }
     }
 
@@ -459,7 +456,8 @@ class OnvifCamera {
             status: this.isConnected ? 'online' : 'offline',
             profiles: this.profiles.length,
             hasPTZ: this.capabilities && this.capabilities.PTZ ? true : false,
-            deviceInfo: this.deviceInfo
+            deviceInfo: this.deviceInfo,
+            presets: this.presets
         };
     }
 
