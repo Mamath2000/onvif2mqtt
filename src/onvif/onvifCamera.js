@@ -44,6 +44,15 @@ class OnvifCamera {
             await this.getProfiles();
             await this.getCapabilities();
             
+            // Récupérer les presets PTZ
+            try {
+                this.presets = await this.getPtzPresets();
+                logger.info(`${this.presets ? Object.keys(this.presets).length : 0} presets récupérés pour ${this.name}`);
+            } catch (error) {
+                logger.warn(`Impossible de récupérer les presets pour ${this.name}:`, error.message);
+                this.presets = {};
+            }
+            
             logger.info(`Caméra connectée: ${this.name}`);
             return true;
         } catch (error) {
@@ -105,7 +114,14 @@ class OnvifCamera {
                 });
             });
             this.capabilities = capabilities;
+            
+            // Détecter les capacités PTZ
+            this.hasPTZ = !!(capabilities && 
+                            capabilities.PTZ && 
+                            (capabilities.PTZ.XAddr || capabilities.PTZ.XAddrs));
+            
             logger.debug(`Capacités de la caméra ${this.name}:`, Object.keys(capabilities));
+            logger.info(`PTZ disponible pour ${this.name}: ${this.hasPTZ}`);
             return capabilities;
         } catch (error) {
             logger.error(`Erreur lors de la récupération des capacités de ${this.name}:`, error);
