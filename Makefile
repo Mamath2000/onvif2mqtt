@@ -29,6 +29,10 @@ test-client:
 
 # Lancer la passerelle ET le client de test web (en parallèle)
 all:
+	@echo "Arrêt des sessions tmux existantes..."
+	-tmux kill-session -t onvif_gateway 2>/dev/null || true
+	-tmux kill-session -t onvif_test_client 2>/dev/null || true
+	@echo "Lancement des nouvelles sessions..."
 	tmux new-session -d -s onvif_gateway 'cd /root/onvif && npm start'
 	tmux new-session -d -s onvif_test_client 'cd /root/onvif/test-client && npm start'
 	@echo "Passerelle et client de test lancés dans deux sessions tmux : onvif_gateway et onvif_test_client"
