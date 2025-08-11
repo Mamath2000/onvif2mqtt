@@ -13,9 +13,12 @@ class OnvifCamera {
         this.profiles = [];
         this.capabilities = null;
         this.presets = {};
+        this.isConnecting = false; // Ajout d'un état de connexion en cours
     }
 
     async connect() {
+        if (this.isConnecting) return;
+        this.isConnecting = true;
         try {
             logger.info(`Connexion à la caméra ONVIF: ${this.name} (${this.host}:${this.port})`);
             
@@ -42,9 +45,7 @@ class OnvifCamera {
             
             // Récupérer les informations de la caméra
             await this.getDeviceInformation();
-            await this.getProfiles();
-            await this.getCapabilities();
-            await this.getPtzPresets();
+            await this.refreshCapabilities();
 
             logger.info(`Caméra connectée: ${this.name}`);
             return true;
@@ -52,6 +53,20 @@ class OnvifCamera {
             logger.error(`Erreur lors de la connexion à la caméra ${this.name}:`, error);
             this.isConnected = false;
             return false;
+        } finally {
+            this.isConnecting = false;
+        }
+    }
+
+    async refreshCapabilities() {
+        try {
+            await this.getCapabilities();
+            await this.getProfiles();
+            await this.getPtzPresets();
+
+        } catch (e) {
+            logger.error({ message: `Refresh capabilities failed ${this.name}`, stack: e.stack });
+            this.isConnected = false;
         }
     }
 
@@ -267,34 +282,7 @@ class OnvifCamera {
             } catch (error) {
                 logger.error(`Erreur lors du mouvement PTZ pour ${this.name}:`, error);
                 return false;
-            }                
-            // } catch (relativeError) {
-            //     logger.debug(`relativeMove échoué pour ${this.name}, essai avec continuousMove:`, relativeError.message);
-                
-            //     // Fallback vers continuousMove si relativeMove n'est pas disponible
-            //     await new Promise((resolve, reject) => {
-            //         this.device.continuousMove(options, (err) => {
-            //             if (err) {
-            //                 reject(err);
-            //             } else {
-            //                 resolve();
-            //             }
-            //         });
-            //     });
-                
-            //     // Si on utilise continuousMove, on doit arrêter après un délai court
-            //     setTimeout(async () => {
-            //         try {
-            //             await this.ptzStop();
-            //             logger.debug(`Arrêt automatique après continuousMove pour ${this.name}`);
-            //         } catch (error) {
-            //             logger.error(`Erreur lors de l'arrêt automatique pour ${this.name}:`, error);
-            //         }
-            //     }, 200); // Délai court pour un petit mouvement
-                
-            //     logger.debug(`Mouvement PTZ continu exécuté pour ${this.name}:`, direction);
-            //     return true;
-            // }
+            }
         } catch (error) {
             logger.error(`Erreur lors du mouvement PTZ pour ${this.name}:`, error);
             return false;

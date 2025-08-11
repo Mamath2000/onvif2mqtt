@@ -25,6 +25,8 @@ class MqttManager {
                 password: this.config.password,
                 clean: true,
                 reconnectPeriod: 5000,
+                connectTimeout: 30000,
+                keepalive: 300,
                 will: {
                     topic: `${this.baseTopic}/lwt`,
                     payload: 'offline',
@@ -67,50 +69,6 @@ class MqttManager {
         }
     }
 
-    // === NOUVELLE STRUCTURE ONVIF2MQTT ===
-
-    // // Publier le statut LWT d'une caméra
-    // publishCameraLWT(camera, status) {
-    //     const cameraId = camera.name.toLowerCase().replace(/\s+/g, '_');
-    //     const topic = `${this.baseTopic}/${cameraId}/lwt`;
-
-    //     if (this.client && this.isConnected) {
-    //         this.client.publish(topic, status, { retain: true, qos: 1 });
-    //         logger.debug(`LWT publié pour ${camera.name}: ${status}`);
-    //     }
-    // }
-
-    // // Publier la liste des presets
-    // publishCameraPresets(camera, presets) {
-    //     const cameraId = camera.name.toLowerCase().replace(/\s+/g, '_');
-    //     const topic = `${this.baseTopic}/${cameraId}/presetListId`;
-
-    //     if (this.client && this.isConnected) {
-    //         // Convertir les presets en format clé/valeur utilisable
-    //         let presetList = {};
-
-    //         if (presets && typeof presets === 'object') {
-    //             if (Array.isArray(presets)) {
-    //                 // Format tableau: [{name: "Cours", token: 1}, ...]
-    //                 presets.forEach(preset => {
-    //                     const name = preset.name || preset.Name || `Preset ${preset.token || preset.Token}`;
-    //                     const token = preset.token || preset.Token;
-    //                     if (token !== undefined) {
-    //                         presetList[name] = token;
-    //                     }
-    //                 });
-    //             } else {
-    //                 // Format objet: {"Cours": 1, "Terrasse": 2, ...}
-    //                 presetList = presets;
-    //             }
-    //         }
-
-    //         const payload = JSON.stringify(presetList);
-    //         this.client.publish(topic, payload, { retain: true, qos: 1 });
-    //         logger.debug(`Presets publiés pour ${camera.name}: ${payload}`);
-    //     }
-    // }
-
     // S'abonner aux commandes onvif2mqtt pour toutes les caméras
     subscribeToOnvifCommands(cameras) {
         if (!this.client || !this.isConnected) return;
@@ -130,7 +88,6 @@ class MqttManager {
             });
         });
     }
-
 
     // Publier l'état d'une caméra
     publishCameraState(camera) {

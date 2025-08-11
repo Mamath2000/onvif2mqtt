@@ -8,7 +8,7 @@ class OnvifMqttGateway {
     constructor() {
         this.mqttManager = null;
         this.onvifManager = null;
-        this.haHelper = null;   
+        this.haHelper = null;
         this.isRunning = false;
         this.isDiscoveryEnabled = process.env.HA_DISCOVERY_ENABLED === 'true';
     }
@@ -31,7 +31,7 @@ class OnvifMqttGateway {
             // Initialiser les gestionnaires
             this.mqttManager = new MqttManager(mqttConfig);
             this.onvifManager = new OnvifManager();
-            
+
             // Configurer les événements MQTT
             // this.mqttManager.on('cameraCommand', this.handleMqttCommand.bind(this));
             this.mqttManager.on('ptzCommand', this.handlePtzCommand.bind(this));
@@ -46,7 +46,7 @@ class OnvifMqttGateway {
             });
             // Connecter les caméras et lancer la suite
             await this.connectAndSetupCameras();
-            
+
             // Démarrer la surveillance des statuts avec l'intervalle configuré
             const updateInterval = parseInt(process.env.STATUS_UPDATE_INTERVAL) || 30000;
             this.onvifManager.startStatusMonitoring(updateInterval, this.onStatusUpdate.bind(this));
@@ -58,8 +58,8 @@ class OnvifMqttGateway {
                 baseTopic: mqttConfig.baseTopic
             });
             this.haHelper.publishGatewayDevice(
-                    mqttConfig.deviceId,
-                    mqttConfig.deviceName
+                mqttConfig.deviceId,
+                mqttConfig.deviceName
             );
 
             const cameraStatuses = this.onvifManager.getAllCameraStatuses();
@@ -69,7 +69,7 @@ class OnvifMqttGateway {
 
             this.isRunning = true;
             logger.info('Contrôleur ONVIF-MQTT démarré avec succès');
-            
+
         } catch (error) {
             logger.error('Erreur lors de l\'initialisation:', error);
             throw error;
@@ -119,10 +119,10 @@ class OnvifMqttGateway {
             logger.debug('Commande onvif reçue:', command);
 
             const { cameraId, command: cmd, direction, speed, presetId } = command;
-            
+
             // Trouver la caméra correspondante
             const cameras = this.onvifManager.getAllCameras();
-            const camera = cameras.find(cam => 
+            const camera = cameras.find(cam =>
                 cam.name.toLowerCase().replace(/\s+/g, '_') === cameraId
             );
 
@@ -191,7 +191,7 @@ class OnvifMqttGateway {
 
     async shutdown() {
         logger.info('Arrêt de la gateway ONVIF-MQTT...');
-        
+
         this.isRunning = false;
 
         if (this.onvifManager) {
@@ -204,7 +204,7 @@ class OnvifMqttGateway {
 
         logger.info('Gateway ONVIF-MQTT arrêtée');
     }
-    }
+}
 // Fonction principale
 async function main() {
     const gateway = new OnvifMqttGateway();
