@@ -43,6 +43,11 @@ class MqttManager {
                 this.publishStatus('online');
             });
 
+            // ✅ Amélioration : meilleure gestion des reconnexions
+            this.client.on('reconnect', () => {
+                logger.info('Reconnexion MQTT en cours...');
+            });
+
             this.client.on('error', (error) => {
                 logger.error('Erreur MQTT:', error);
                 this.isConnected = false;
@@ -50,6 +55,12 @@ class MqttManager {
 
             this.client.on('close', () => {
                 logger.warn('Connexion MQTT fermée');
+                this.isConnected = false;
+            });
+
+            // ✅ Ajout gestion offline
+            this.client.on('offline', () => {
+                logger.warn('Client MQTT hors ligne');
                 this.isConnected = false;
             });
 
@@ -65,7 +76,10 @@ class MqttManager {
 
     publishStatus(status) {
         if (this.client && this.isConnected) {
-            this.client.publish(`${this.baseTopic}/lwt`, status, { retain: true });
+            this.publishRaw(
+                `${this.baseTopic}/lwt`, 
+                status, 
+                { retain: true });
         }
     }
 
@@ -94,7 +108,7 @@ class MqttManager {
         const cameraId = camera.name.toLowerCase().replace(/\s+/g, '_');
 
         // État du LWT
-        this.client.publish(
+        this.publishRaw(
             `${this.baseTopic}/${cameraId}/lwt`,
             (camera.isConnected ? 'online' : 'offline'),
             { retain: true }
@@ -102,7 +116,7 @@ class MqttManager {
         if (camera.isConnected) {
 
             // Capabilities - PTZ
-            this.client.publish(
+            this.publishRaw(
                 `${this.baseTopic}/${cameraId}/capabilities/ptz`,
                 (camera.hasPTZ ? 'true' : 'false'),
                 { retain: true }
@@ -110,7 +124,7 @@ class MqttManager {
 
             if (camera.hasPTZ) {
                 const payload = JSON.stringify(camera.presets);
-                this.client.publish(
+                this.publishRaw(
                     `${this.baseTopic}/${cameraId}/presets`,
                     payload,
                     { retain: true, qos: 1 }
@@ -120,29 +134,27 @@ class MqttManager {
         }
     }
 
-    // Publier une image de caméra
-    publishCameraImage(camera, imageBuffer) {
-        const cameraId = camera.name.toLowerCase().replace(/\s+/g, '_');
-        this.client.publish(
-            `${this.config.discoveryPrefix}/camera/${cameraId}/image`,
-            imageBuffer
-        );
-    }
+    // // Publier une image de caméra
+    // publishCameraImage(camera, imageBuffer) {
+    //     const cameraId = camera.name.toLowerCase().replace(/\s+/g, '_');
+    //     this.publishRaw(
+    //         `${this.config.discoveryPrefix}/camera/${cameraId}/image`,
+    //         imageBuffer
+    //     );
+    // }
 
     handleMessage(topic, message) {
         logger.debug(`Message reçu - Topic: ${topic}, Message: ${message}`);
 
-        // Gestion des commandes onvif2mqtt
         const topicParts = topic.split('/');
         if (topicParts.length >= 3) {
             const [, cameraId, command] = topicParts;
             if (command === 'cmd' || command === 'goPreset') {
-
                 logger.debug(`Commande reçue - Caméra: ${cameraId}, Commande: ${command}, Message: ${message}`);
 
                 switch (command) {
                     case 'cmd':
-                        // message: move-left, move-right, move-up, move-down, zoom-in, zoom-out
+                        const [action, direction] = message.split('-');
                         if (action === 'move') {
                             // move-left, move-right, move-up, move-down
                             if (['left', 'right', 'up', 'down'].includes(direction)) {
@@ -169,13 +181,17 @@ class MqttManager {
                             } else {
                                 logger.warn(`Direction de zoom invalide: ${direction}`);
                             }
+                        } else if (message === 'stop') {
+                            this.emit('ptzCommand', {
+                                cameraId,
+                                command: 'stop'
+                            });
                         } else {
                             logger.warn(`Action PTZ inconnue: ${action}`);
                         }
                         break;
-
+                        
                     case 'goPreset':
-                        // message: preset ID
                         this.emit('ptzCommand', {
                             cameraId,
                             command: 'preset',
@@ -213,6 +229,15 @@ class MqttManager {
             this.client.end();
             this.isConnected = false;
             logger.info('Déconnecté du broker MQTT');
+        }
+    }
+
+    publishRaw(topic, payload, options = {}) {
+        if (this.client && this.isConnected) {
+            this.client.publish(topic, payload, options);
+            logger.debug(`Message publié - Topic: ${topic}`);
+        } else {
+            logger.warn(`Impossible de publier sur ${topic} - MQTT non connecté`);
         }
     }
 }

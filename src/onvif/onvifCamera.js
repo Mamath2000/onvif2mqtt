@@ -22,23 +22,22 @@ class OnvifCamera {
         try {
             logger.info(`Connexion à la caméra ONVIF: ${this.name} (${this.host}:${this.port})`);
             
+            const timeout = parseInt(process.env.ONVIF_TIMEOUT) || 10000;
+
             // Créer le device ONVIF avec la bonne syntaxe
             this.device = new onvif.Cam({
                 hostname: this.host,
                 username: this.username,
                 password: this.password,
                 port: this.port,
-                timeout: 10000
+                timeout: timeout
             });
 
             // Initialiser la connexion
             await new Promise((resolve, reject) => {
                 this.device.connect((err) => {
-                    if (err) {
-                        reject(err);
-                    } else {
-                        resolve();
-                    }
+                    if (err) reject(err);
+                    else resolve();
                 });
             });
             this.isConnected = true;
@@ -70,25 +69,25 @@ class OnvifCamera {
         }
     }
 
-    async getDeviceInformation() {
-        try {
-            const info = await new Promise((resolve, reject) => {
-                this.device.getDeviceInformation((err, result) => {
-                    if (err) {
-                        reject(err);
-                    } else {
-                        resolve(result);
-                    }
-                });
-            });
-            this.deviceInfo = info;
-            logger.debug(`Informations de la caméra ${this.name}:`, info);
-            return info;
-        } catch (error) {
-            logger.error(`Erreur lors de la récupération des informations de ${this.name}:`, error);
-            return null;
-        }
-    }
+    // async getDeviceInformation() {
+    //     try {
+    //         const info = await new Promise((resolve, reject) => {
+    //             this.device.getDeviceInformation((err, result) => {
+    //                 if (err) {
+    //                     reject(err);
+    //                 } else {
+    //                     resolve(result);
+    //                 }
+    //             });
+    //         });
+    //         this.deviceInfo = info;
+    //         logger.debug(`Informations de la caméra ${this.name}:`, info);
+    //         return info;
+    //     } catch (error) {
+    //         logger.error(`Erreur lors de la récupération des informations de ${this.name}:`, error);
+    //         return null;
+    //     }
+    // }
 
     async getProfiles() {
         try {
@@ -137,85 +136,85 @@ class OnvifCamera {
         }
     }
 
-    async getStreamUri(profileIndex = 0) {
-        try {
-            if (this.profiles.length === 0) {
-                throw new Error('Aucun profil disponible');
-            }
+    // async getStreamUri(profileIndex = 0) {
+    //     try {
+    //         if (this.profiles.length === 0) {
+    //             throw new Error('Aucun profil disponible');
+    //         }
 
-            const profile = this.profiles[profileIndex];
-            const streamUri = await new Promise((resolve, reject) => {
-                this.device.getStreamUri({
-                    protocol: 'RTSP',
-                    profileToken: profile.token
-                }, (err, result) => {
-                    if (err) {
-                        reject(err);
-                    } else {
-                        resolve(result);
-                    }
-                });
-            });
+    //         const profile = this.profiles[profileIndex];
+    //         const streamUri = await new Promise((resolve, reject) => {
+    //             this.device.getStreamUri({
+    //                 protocol: 'RTSP',
+    //                 profileToken: profile.token
+    //             }, (err, result) => {
+    //                 if (err) {
+    //                     reject(err);
+    //                 } else {
+    //                     resolve(result);
+    //                 }
+    //             });
+    //         });
 
-            logger.debug(`URI de stream pour ${this.name}:`, streamUri.uri);
-            return streamUri.uri;
-        } catch (error) {
-            logger.error(`Erreur lors de la récupération de l'URI de stream pour ${this.name}:`, error);
-            return null;
-        }
-    }
+    //         logger.debug(`URI de stream pour ${this.name}:`, streamUri.uri);
+    //         return streamUri.uri;
+    //     } catch (error) {
+    //         logger.error(`Erreur lors de la récupération de l'URI de stream pour ${this.name}:`, error);
+    //         return null;
+    //     }
+    // }
 
-    async getSnapshot(profileIndex = 0) {
-        try {
-            if (this.profiles.length === 0) {
-                throw new Error('Aucun profil disponible');
-            }
+    // async getSnapshot(profileIndex = 0) {
+    //     try {
+    //         if (this.profiles.length === 0) {
+    //             throw new Error('Aucun profil disponible');
+    //         }
 
-            const profile = this.profiles[profileIndex];
-            const snapshotUri = await new Promise((resolve, reject) => {
-                this.device.getSnapshotUri({
-                    profileToken: profile.token
-                }, (err, result) => {
-                    if (err) {
-                        reject(err);
-                    } else {
-                        resolve(result);
-                    }
-                });
-            });
+    //         const profile = this.profiles[profileIndex];
+    //         const snapshotUri = await new Promise((resolve, reject) => {
+    //             this.device.getSnapshotUri({
+    //                 profileToken: profile.token
+    //             }, (err, result) => {
+    //                 if (err) {
+    //                     reject(err);
+    //                 } else {
+    //                     resolve(result);
+    //                 }
+    //             });
+    //         });
 
-            logger.debug(`URI de snapshot pour ${this.name}:`, snapshotUri.uri);
+    //         logger.debug(`URI de snapshot pour ${this.name}:`, snapshotUri.uri);
             
-            // Télécharger l'image en utilisant fetch ou http
-            const https = require('https');
-            const http = require('http');
-            const url = require('url');
+    //         // Télécharger l'image en utilisant fetch ou http
+    //         const https = require('https');
+    //         const http = require('http');
+    //         const url = require('url');
             
-            return new Promise((resolve, reject) => {
-                const parsedUrl = url.parse(snapshotUri.uri);
-                const client = parsedUrl.protocol === 'https:' ? https : http;
+    //         return new Promise((resolve, reject) => {
+    //             const parsedUrl = url.parse(snapshotUri.uri);
+    //             const client = parsedUrl.protocol === 'https:' ? https : http;
                 
-                const request = client.get(snapshotUri.uri, (response) => {
-                    if (response.statusCode !== 200) {
-                        reject(new Error(`Erreur HTTP: ${response.statusCode}`));
-                        return;
-                    }
+    //             const request = client.get(snapshotUri.uri, (response) => {
+    //                 if (response.statusCode !== 200) {
+    //                     reject(new Error(`Erreur HTTP: ${response.statusCode}`));
+    //                     return;
+    //                 }
                     
-                    const chunks = [];
-                    response.on('data', (chunk) => chunks.push(chunk));
-                    response.on('end', () => {
-                        const imageBuffer = Buffer.concat(chunks);
-                        resolve(imageBuffer);
-                    });
-                });
+    //                 const chunks = [];
+    //                 response.on('data', (chunk) => chunks.push(chunk));
+    //                 response.on('end', () => {
+    //                     const imageBuffer = Buffer.concat(chunks);
+    //                     resolve(imageBuffer);
+    //                 });
+    //             });
                 
-                request.on('error', reject);
-            });
-        } catch (error) {
-            logger.error(`Erreur lors de la capture d'image pour ${this.name}:`, error);
-            return null;
-        }
-    }
+    //             request.on('error', reject);
+    //         });
+    //     } catch (error) {
+    //         logger.error(`Erreur lors de la capture d'image pour ${this.name}:`, error);
+    //         return null;
+    //     }
+    // }
 
     // Fonctions PTZ (Pan-Tilt-Zoom)
     async moveUp(speed = 0.5) {

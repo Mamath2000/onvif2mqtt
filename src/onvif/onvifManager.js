@@ -26,18 +26,23 @@ class OnvifManager {
     }
 
     async connectAllCameras() {
-        const connectionPromises = Array.from(this.cameras.values()).map(camera => 
-            camera.connect()
-        );
-        
+        const connectionPromises = Array.from(this.cameras.values()).map(async camera => {
+            try {
+                return await camera.connect();
+            } catch (error) {
+                logger.error(`Erreur de connexion pour ${camera.name}:`, error);
+                return false;
+            }
+        });
+
         const results = await Promise.allSettled(connectionPromises);
-        
+
         results.forEach((result, index) => {
             const camera = Array.from(this.cameras.values())[index];
             if (result.status === 'fulfilled' && result.value) {
                 logger.info(`Connexion réussie: ${camera.name}`);
             } else {
-                logger.error(`Échec de connexion: ${camera.name}`);
+                logger.error(`Échec de connexion: ${camera.name} - ${result.reason || 'Raison inconnue'}`);
             }
         });
 
@@ -49,6 +54,31 @@ class OnvifManager {
         if (camera) {
             return await camera.connect();
         }
+        return false;
+    }
+
+
+    // ✅ Amélioration : tentative de reconnexion automatique
+    async attemptReconnection(camera, maxRetries = 3) {
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            logger.info(`Tentative de reconnexion ${attempt}/${maxRetries} pour ${camera.name}`);
+
+            try {
+                const success = await camera.connect();
+                if (success) {
+                    logger.info(`Reconnexion réussie pour ${camera.name}`);
+                    return true;
+                }
+            } catch (error) {
+                logger.warn(`Tentative ${attempt} échouée pour ${camera.name}:`, error);
+            }
+
+            if (attempt < maxRetries) {
+                await new Promise(resolve => setTimeout(resolve, 5000));
+            }
+        }
+
+        logger.error(`Reconnexion impossible pour ${camera.name} après ${maxRetries} tentatives`);
         return false;
     }
 
@@ -170,11 +200,11 @@ class OnvifManager {
     // async discoverCameras(timeout = 5000) {
     //     try {
     //         logger.info('Recherche de caméras ONVIF sur le réseau...');
-            
+
     //         const onvif = require('onvif');
     //         const devices = await new Promise((resolve, reject) => {
     //             const foundDevices = [];
-                
+
     //             onvif.Discovery.on('device', (cam, rinfo, xml) => {
     //                 foundDevices.push({
     //                     address: rinfo.address,
@@ -197,7 +227,7 @@ class OnvifManager {
 
     //         logger.info(`${devices.length} caméras ONVIF découvertes`);
     //         return devices;
-            
+
     //     } catch (error) {
     //         logger.error('Erreur lors de la découverte des caméras:', error);
     //         return [];
@@ -211,11 +241,24 @@ class OnvifManager {
         }
 
         this.statusUpdateInterval = setInterval(async () => {
-            const statuses = this.getAllCameraStatuses();
-            logger.debug('Mise à jour des statuts des caméras');
-            
-            if (onStatusUpdate) {
-                onStatusUpdate(statuses);
+            try {
+                const statuses = this.getAllCameraStatuses();
+
+                // ✅ Amélioration : tentative de reconnexion des caméras déconnectées
+                for (const [name, camera] of this.cameras) {
+                    if (!camera.isConnected && !camera.isConnecting) {
+                        logger.warn(`Caméra ${name} déconnectée, tentative de reconnexion...`);
+                        await this.attemptReconnection(camera, 1);
+                    }
+                }
+
+                logger.debug('Mise à jour des statuts des caméras');
+
+                if (onStatusUpdate) {
+                    onStatusUpdate(statuses);
+                }
+            } catch (error) {
+                logger.error('Erreur lors de la surveillance des statuts:', error);
             }
         }, intervalMs);
 

@@ -179,14 +179,18 @@ class OnvifMqttGateway {
     }
 
     onStatusUpdate(statuses) {
-        // Publier les statuts mis à jour via MQTT
-        Object.values(statuses).forEach(status => {
-            const camera = this.onvifManager.getCamera(status.name);
-            if (camera) {
-                // Home Assistant state
-                this.mqttManager.publishCameraState(camera, status);
-            }
-        });
+        try {
+            // Publier les statuts mis à jour via MQTT
+            Object.values(statuses).forEach(status => {
+                const camera = this.onvifManager.getCamera(status.name);
+                if (camera) {
+                    // Home Assistant state
+                    this.mqttManager.publishCameraState(camera);
+                }
+            });
+        } catch (error) {
+            logger.error('Erreur lors de la publication des statuts MQTT:', error);
+        }
     }
 
     async shutdown() {
