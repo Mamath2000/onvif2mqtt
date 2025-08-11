@@ -346,7 +346,6 @@ def on_message(client, userdata, message):
 client = mqtt.Client()
 client.on_message = on_message
 client.connect("localhost", 1883, 60)
-client.subscribe("homeassistant/sensor/+_status/state")
 client.loop_forever()
 ```
 

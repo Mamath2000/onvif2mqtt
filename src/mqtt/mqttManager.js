@@ -68,12 +68,12 @@ class MqttManager {
     }
 
     // === NOUVELLE STRUCTURE ONVIF2MQTT ===
-    
+
     // // Publier le statut LWT d'une caméra
     // publishCameraLWT(camera, status) {
     //     const cameraId = camera.name.toLowerCase().replace(/\s+/g, '_');
     //     const topic = `${this.baseTopic}/${cameraId}/lwt`;
-        
+
     //     if (this.client && this.isConnected) {
     //         this.client.publish(topic, status, { retain: true, qos: 1 });
     //         logger.debug(`LWT publié pour ${camera.name}: ${status}`);
@@ -84,11 +84,11 @@ class MqttManager {
     // publishCameraPresets(camera, presets) {
     //     const cameraId = camera.name.toLowerCase().replace(/\s+/g, '_');
     //     const topic = `${this.baseTopic}/${cameraId}/presetListId`;
-        
+
     //     if (this.client && this.isConnected) {
     //         // Convertir les presets en format clé/valeur utilisable
     //         let presetList = {};
-            
+
     //         if (presets && typeof presets === 'object') {
     //             if (Array.isArray(presets)) {
     //                 // Format tableau: [{name: "Cours", token: 1}, ...]
@@ -104,7 +104,7 @@ class MqttManager {
     //                 presetList = presets;
     //             }
     //         }
-            
+
     //         const payload = JSON.stringify(presetList);
     //         this.client.publish(topic, payload, { retain: true, qos: 1 });
     //         logger.debug(`Presets publiés pour ${camera.name}: ${payload}`);
@@ -112,12 +112,12 @@ class MqttManager {
     // }
 
     // S'abonner aux commandes onvif2mqtt pour toutes les caméras
-    subscribeToOnvif2MqttCommands(cameras) {
+    subscribeToOnvifCommands(cameras) {
         if (!this.client || !this.isConnected) return;
 
         cameras.forEach(camera => {
             const cameraId = camera.name.toLowerCase().replace(/\s+/g, '_');
-            
+
             // Topics de commande simplifiés
             const commandTopics = [
                 `${this.baseTopic}/${cameraId}/cmd`,
@@ -135,7 +135,7 @@ class MqttManager {
     // Publier l'état d'une caméra
     publishCameraState(camera) {
         const cameraId = camera.name.toLowerCase().replace(/\s+/g, '_');
-        
+
         // État du LWT
         this.client.publish(
             `${this.baseTopic}/${cameraId}/lwt`,
@@ -172,120 +172,67 @@ class MqttManager {
         );
     }
 
-    // S'abonner aux commandes
-    subscribeToCommands(cameras) {
-        cameras.forEach(camera => {
-            const cameraId = camera.name.toLowerCase().replace(/\s+/g, '_');
-            const commandTopic = `${this.config.discoveryPrefix}/switch/${cameraId}_power/set`;
-            this.client.subscribe(commandTopic);
-            logger.info(`Abonné aux commandes pour: ${commandTopic}`);
-        });
-    }
-
     handleMessage(topic, message) {
         logger.debug(`Message reçu - Topic: ${topic}, Message: ${message}`);
-        
+
         // Gestion des commandes onvif2mqtt
-        if (topic.startsWith(this.baseTopic)) {
-            this.handleOnvif2MqttCommand(topic, message);
-            return;
-        }
-        
-        // Gestion des commandes Home Assistant (existant)
         const topicParts = topic.split('/');
-        if (topicParts.length >= 4 && topicParts[0] === this.config.discoveryPrefix.replace('homeassistant', '').replace('/', '')) {
-            const deviceType = topicParts[1];
-            const deviceId = topicParts[2];
-            const command = topicParts[3];
-
-            if (deviceType === 'switch' && command === 'set') {
-                const cameraId = deviceId.replace('_power', '');
-                const powerState = message === 'ON';
-                
-                // Émettre un événement pour que l'application gère la commande
-                this.emit('cameraCommand', {
-                    cameraId,
-                    command: 'power',
-                    value: powerState
-                });
-            }
-        }
-    }
-
-    // Nouvelle méthode pour gérer les commandes onvif2mqtt
-    handleOnvif2MqttCommand(topic, message) {
-        const topicParts = topic.split('/');
-        // Format: onvif2mqtt/{cam_id}/{command}
-        
         if (topicParts.length >= 3) {
-            const cameraId = topicParts[1];
-            const command = topicParts[2];
-            
-            logger.debug(`Commande onvif2mqtt reçue - Caméra: ${cameraId}, Commande: ${command}, Message: ${message}`);
-            
-            switch (command) {
-                case 'cmd':
-                    // message: move-left, move-right, move-up, move-down, zoom-in, zoom-out
-                    this.handlePtzCmd(cameraId, message);
-                    break;
-                    
-                case 'goPreset':
-                    // message: preset ID
-                    this.emit('ptzCommand', {
-                        cameraId,
-                        command: 'preset',
-                        presetId: message
-                    });
-                    break;
-                    
-                default:
-                    logger.warn(`Commande onvif2mqtt inconnue: ${command}`);
+            const [, cameraId, command] = topicParts;
+            if (command === 'cmd' || command === 'goPreset') {
+
+                logger.debug(`Commande reçue - Caméra: ${cameraId}, Commande: ${command}, Message: ${message}`);
+
+                switch (command) {
+                    case 'cmd':
+                        // message: move-left, move-right, move-up, move-down, zoom-in, zoom-out
+                        if (action === 'move') {
+                            // move-left, move-right, move-up, move-down
+                            if (['left', 'right', 'up', 'down'].includes(direction)) {
+                                const defaultSpeed = parseFloat(process.env.PTZ_DEFAULT_SPEED) || 0.5;
+                                this.emit('ptzCommand', {
+                                    cameraId,
+                                    command: 'move',
+                                    direction: direction,
+                                    speed: defaultSpeed
+                                });
+                            } else {
+                                logger.warn(`Direction de mouvement invalide: ${direction}`);
+                            }
+                        } else if (action === 'zoom') {
+                            // zoom-in, zoom-out
+                            if (['in', 'out'].includes(direction)) {
+                                const defaultSpeed = parseFloat(process.env.PTZ_DEFAULT_SPEED) || 0.5;
+                                this.emit('ptzCommand', {
+                                    cameraId,
+                                    command: 'zoom',
+                                    direction: direction,
+                                    speed: defaultSpeed
+                                });
+                            } else {
+                                logger.warn(`Direction de zoom invalide: ${direction}`);
+                            }
+                        } else {
+                            logger.warn(`Action PTZ inconnue: ${action}`);
+                        }
+                        break;
+
+                    case 'goPreset':
+                        // message: preset ID
+                        this.emit('ptzCommand', {
+                            cameraId,
+                            command: 'preset',
+                            presetId: message
+                        });
+                        break;
+
+                    default:
+                        logger.warn(`Commande onvif inconnue: ${command}`);
+                }
             }
         }
     }
-
-    // Gérer les commandes PTZ via le topic cmd
-    handlePtzCmd(cameraId, cmdMessage) {
-        const cmdParts = cmdMessage.split('-');
-        
-        if (cmdParts.length >= 2) {
-            const action = cmdParts[0]; // move ou zoom
-            const direction = cmdParts[1]; // left, right, up, down, in, out
-            
-            if (action === 'move') {
-                // move-left, move-right, move-up, move-down
-                if (['left', 'right', 'up', 'down'].includes(direction)) {
-                    const defaultSpeed = parseFloat(process.env.PTZ_DEFAULT_SPEED) || 0.5;
-                    this.emit('ptzCommand', {
-                        cameraId,
-                        command: 'move',
-                        direction: direction,
-                        speed: defaultSpeed
-                    });
-                } else {
-                    logger.warn(`Direction de mouvement invalide: ${direction}`);
-                }
-            } else if (action === 'zoom') {
-                // zoom-in, zoom-out
-                if (['in', 'out'].includes(direction)) {
-                    const defaultSpeed = parseFloat(process.env.PTZ_DEFAULT_SPEED) || 0.5;
-                    this.emit('ptzCommand', {
-                        cameraId,
-                        command: 'zoom',
-                        direction: direction,
-                        speed: defaultSpeed
-                    });
-                } else {
-                    logger.warn(`Direction de zoom invalide: ${direction}`);
-                }
-            } else {
-                logger.warn(`Action PTZ inconnue: ${action}`);
-            }
-        } else {
-            logger.warn(`Format de commande PTZ invalide: ${cmdMessage}. Attendu: action-direction (ex: move-left, zoom-in)`);
-        }
-    }
-
+    
     // Méthodes pour émettre des événements (pattern EventEmitter)
     emit(event, data) {
         if (this.listeners && this.listeners[event]) {

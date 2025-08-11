@@ -5,13 +5,13 @@ class HADiscoveryHelper {
         this.mqttClient = mqttClient;
         this.discoveryPrefix = options.discoveryPrefix || 'homeassistant';
         this.baseTopic = options.baseTopic || 'onvif2mqtt';
-        this.lwtTopic = `${this.baseTopic}/lwt`;
+        this.isDiscoveryEnabled = options.isDiscoveryEnabled || false;
     }
 
     publishGatewayDevice(deviceId, deviceName) {
-    //     if (!this.isDiscoveryEnabled) {
-    //         return;
-    //     }
+        if (!this.isDiscoveryEnabled) {
+            return;
+        }
 
         const device = {
             identifiers: [deviceId],
@@ -49,16 +49,16 @@ class HADiscoveryHelper {
         };
 
         this.mqttClient.publish(
-                gatewayTopic, 
-                JSON.stringify(gatewayPayload), 
-                { retain: true, qos: 1 });
+            gatewayTopic,
+            JSON.stringify(gatewayPayload),
+            { retain: true, qos: 1 });
 
     }
 
-    publishCameraDevice(cameraStatus){
-    // if (!this.isDiscoveryEnabled) {
-    //     return;
-    // }
+    publishCameraDevice(gatewayId,cameraStatus) {
+        if (!this.isDiscoveryEnabled) {
+            return;
+        }
 
         const identifier = `${cameraStatus.name.toLowerCase().replace(/\s+/g, '_')}`;
         const device = {
@@ -66,7 +66,8 @@ class HADiscoveryHelper {
             name: cameraStatus.name,
             manufacturer: cameraStatus.manufacturer,
             model: cameraStatus.model,
-            sn: cameraStatus.serialNumber,  
+            sn: cameraStatus.serialNumber,
+            via_device: gatewayId,
             connections: [
                 ['ip', cameraStatus.host]
             ]
@@ -86,21 +87,21 @@ class HADiscoveryHelper {
             }
         ];
 
-        const cameraTopic = `${this.discoveryPrfix}/device/${identifier}/config`;
+        const cameraTopic = `${this.discoveryPrefix}/device/${identifier}/config`;
         const cameraPayload = {
             device: device,
             origin: origin,
             availability: availability,
             availability_mode: "all",
             components: {
-                idiamant_camera_state: {
+                [`${identifier}_state`]: {
                     platform: 'binary_sensor',
                     object_id: `${identifier}_state`,
                     unique_id: `${identifier}_state`,
                     availability: [{
-                            topic: `${this.baseTopic}/lwt`,
-                            payload_available: 'online',
-                        }], 
+                        topic: `${this.baseTopic}/lwt`,
+                        payload_available: 'online',
+                    }],
                     name: 'State',
                     force_update: true,
                     state_topic: `${stateTopic}/lwt`,
@@ -111,27 +112,24 @@ class HADiscoveryHelper {
             }
         };
 
-    //     this.mqttClient.publish(cameraTopic, JSON.stringify(cameraPayload), { retain: true });
-    // }
+        Object.keys(cameraStatus.presets).forEach(key => {
+            const preset = cameraStatus.presets[key];
+            cameraPayload.components[`${identifier}_preset_${preset}`] = {
+                platform: 'button',
+                object_id: `${identifier}_preset_${key}`,
+                unique_id: `${identifier}_preset_${preset}`,
+                name: `Preset ${key}`,
+                command_topic: `${stateTopic}/goPreset`,
+                payload_press: preset
+            };
+        });
 
+        this.mqttClient.publish(
+            cameraTopic,
+            JSON.stringify(cameraPayload),
+            { retain: true, qos: 1 }
+        );
 
-        // // Déclaration HA au démarrage
-        // if (Array.isArray(cameras)) {
-        //     cameras.forEach(camera => {
-        //                 this.publishCameraDiscovery(camera);
-        //             });
-        //         }
-        //         // Timer pour republier toutes les heures
-        //         if (this._haDiscoveryInterval) clearInterval(this._haDiscoveryInterval);
-        //         this._haDiscoveryInterval = setInterval(() => {
-        //             if (Array.isArray(cameras)) {
-        //                 cameras.forEach(camera => {
-        //                     this.publishCameraDiscovery(camera);
-        //                 });
-        //                 logger.info('Déclaration HA republiee (intervalle horaire)');
-        //             }
-        //         }, 3600 * 1000); // 1 heure
-                
     }
 
 
