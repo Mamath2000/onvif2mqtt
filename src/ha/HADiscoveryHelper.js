@@ -59,7 +59,7 @@ class HADiscoveryHelper {
 
     }
 
-    publishCameraDevice(gatewayId,cameraStatus) {
+    publishCameraDevice(gatewayId, cameraStatus) {
         if (!this.isDiscoveryEnabled) {
             return;
         }
@@ -68,9 +68,11 @@ class HADiscoveryHelper {
             const device = {
                 identifiers: [identifier],
                 name: cameraStatus.name,
-                manufacturer: cameraStatus.manufacturer,
-                model: cameraStatus.model,
-                sn: cameraStatus.serialNumber,
+                manufacturer: cameraStatus.deviceInfo.manufacturer,
+                model: cameraStatus.deviceInfo.model,
+                serial_number: cameraStatus.deviceInfo.serialNumber,
+                sw_version: cameraStatus.deviceInfo.firmwareVersion,
+                hw_version: cameraStatus.deviceInfo.hardwareId,
                 via_device: gatewayId,
                 connections: [
                     ['ip', cameraStatus.host]

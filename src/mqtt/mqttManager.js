@@ -235,7 +235,7 @@ class MqttManager {
     publishRaw(topic, payload, options = {}) {
         if (this.client && this.isConnected) {
             this.client.publish(topic, payload, options);
-            logger.debug(`Message publié - Topic: ${topic}`);
+            logger.debug(`Message brut publié - Topic: ${topic}`);
         } else {
             logger.warn(`Impossible de publier sur ${topic} - MQTT non connecté`);
         }

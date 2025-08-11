@@ -57,28 +57,28 @@ class OnvifManager {
         return false;
     }
 
-
     // ✅ Amélioration : tentative de reconnexion automatique
     async attemptReconnection(camera, maxRetries = 3) {
-        for (let attempt = 1; attempt <= maxRetries; attempt++) {
-            logger.info(`Tentative de reconnexion ${attempt}/${maxRetries} pour ${camera.name}`);
-
-            try {
-                const success = await camera.connect();
-                if (success) {
-                    logger.info(`Reconnexion réussie pour ${camera.name}`);
-                    return true;
-                }
-            } catch (error) {
-                logger.warn(`Tentative ${attempt} échouée pour ${camera.name}:`, error);
-            }
-
-            if (attempt < maxRetries) {
-                await new Promise(resolve => setTimeout(resolve, 5000));
-            }
+        // ✅ AJOUT : Vérifier si déjà connecté
+        if (camera.isConnected) {
+            logger.debug(`Caméra ${camera.name} déjà connectée, reconnexion annulée`);
+            return true;
         }
 
-        logger.error(`Reconnexion impossible pour ${camera.name} après ${maxRetries} tentatives`);
+        if (camera.isConnecting) {
+            logger.debug(`Reconnexion déjà en cours pour ${camera.name}`);
+            return false;
+        }
+
+        // Tentative de reconnexion
+        const success = await camera.connect();
+        if (success) {
+            logger.info(`✅ Reconnexion réussie pour ${camera.name}`);
+            return true;
+        } else {
+            logger.warn(`Tentative ${attempt} échouée pour ${camera.name}:`, error.message);
+        }
+        logger.error(`❌ Reconnexion impossible pour ${camera.name} après ${maxRetries} tentatives`);
         return false;
     }
 
@@ -243,17 +243,20 @@ class OnvifManager {
         this.statusUpdateInterval = setInterval(async () => {
             try {
                 const statuses = this.getAllCameraStatuses();
-
-                // ✅ Amélioration : tentative de reconnexion des caméras déconnectées
+                
+                // ✅ Amélioration : reconnexion seulement des caméras déconnectées
                 for (const [name, camera] of this.cameras) {
                     if (!camera.isConnected && !camera.isConnecting) {
                         logger.warn(`Caméra ${name} déconnectée, tentative de reconnexion...`);
-                        await this.attemptReconnection(camera, 1);
+                        // Reconnexion en arrière-plan sans bloquer
+                        this.attemptReconnection(camera, 1).catch(error => {
+                            logger.error(`Échec de reconnexion pour ${name}:`, error);
+                        });
                     }
                 }
-
-                logger.debug('Mise à jour des statuts des caméras');
-
+                
+                logger.debug('Surveillance des statuts des caméras effectuée');
+                
                 if (onStatusUpdate) {
                     onStatusUpdate(statuses);
                 }

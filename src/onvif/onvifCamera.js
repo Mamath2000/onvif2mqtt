@@ -17,14 +17,27 @@ class OnvifCamera {
     }
 
     async connect() {
-        if (this.isConnecting) return;
+        if (this.isConnecting) {
+            logger.debug(`Connexion déjà en cours pour ${this.name}`);
+            return false;
+        }
+        if (this.isConnected) {
+            logger.debug(`Connexion déjà établie pour ${this.name}`);
+            return false;
+        }
+
         this.isConnecting = true;
+        
         try {
             logger.info(`Connexion à la caméra ONVIF: ${this.name} (${this.host}:${this.port})`);
             
+            // Nettoyer l'état précédent
+            this.isConnected = false;
+            this.device = null;
+            
             const timeout = parseInt(process.env.ONVIF_TIMEOUT) || 10000;
 
-            // Créer le device ONVIF avec la bonne syntaxe
+            // Créer le device ONVIF
             this.device = new onvif.Cam({
                 hostname: this.host,
                 username: this.username,
@@ -40,17 +53,20 @@ class OnvifCamera {
                     else resolve();
                 });
             });
-            this.isConnected = true;
             
-            // Récupérer les informations de la caméra
-            await this.getDeviceInformation();
+            this.isConnected = true;
+
+            // ✅ CORRECTION : Appeler fetchDeviceDetail au lieu de getDeviceInformation
+            await this.fetchDeviceInformation();
             await this.refreshCapabilities();
 
             logger.info(`Caméra connectée: ${this.name}`);
             return true;
+            
         } catch (error) {
             logger.error(`Erreur lors de la connexion à la caméra ${this.name}:`, error);
             this.isConnected = false;
+            this.device = null;
             return false;
         } finally {
             this.isConnecting = false;
@@ -59,9 +75,9 @@ class OnvifCamera {
 
     async refreshCapabilities() {
         try {
-            await this.getCapabilities();
-            await this.getProfiles();
-            await this.getPtzPresets();
+            await this.fetchCapabilities();
+            await this.fetchProfiles();
+            await this.fetchPtzPresets();
 
         } catch (e) {
             logger.error({ message: `Refresh capabilities failed ${this.name}`, stack: e.stack });
@@ -69,27 +85,24 @@ class OnvifCamera {
         }
     }
 
-    // async getDeviceInformation() {
-    //     try {
-    //         const info = await new Promise((resolve, reject) => {
-    //             this.device.getDeviceInformation((err, result) => {
-    //                 if (err) {
-    //                     reject(err);
-    //                 } else {
-    //                     resolve(result);
-    //                 }
-    //             });
-    //         });
-    //         this.deviceInfo = info;
-    //         logger.debug(`Informations de la caméra ${this.name}:`, info);
-    //         return info;
-    //     } catch (error) {
-    //         logger.error(`Erreur lors de la récupération des informations de ${this.name}:`, error);
-    //         return null;
-    //     }
-    // }
+    async fetchDeviceInformation() {
+        try {
+            const info = await new Promise((resolve, reject) => {
+                this.device.getDeviceInformation((err, result) => {
+                    if (err) reject(err);
+                    else resolve(result);
+                });
+            });
+            this.deviceInfo = info;
+            logger.debug(`Informations de la caméra ${this.name}:`, info);
+            return info;
+        } catch (error) {
+            logger.error(`Erreur lors de la récupération des informations de ${this.name}:`, error);
+            return null;
+        }
+    }
 
-    async getProfiles() {
+    async fetchProfiles() {
         try {
             const profiles = await new Promise((resolve, reject) => {
                 this.device.getProfiles((err, result) => {
@@ -109,7 +122,7 @@ class OnvifCamera {
         }
     }
 
-    async getCapabilities() {
+    async fetchCapabilities() {
         try {
             const capabilities = await new Promise((resolve, reject) => {
                 this.device.getCapabilities((err, result) => {
@@ -249,8 +262,20 @@ class OnvifCamera {
 
     async ptzMove(direction, profileIndex = 0) {
         try {
+            // ✅ Vérification de connexion avant opération PTZ
+            if (!this.isConnected) {
+                logger.warn(`Caméra ${this.name} non connectée, impossible d'effectuer le mouvement PTZ`);
+                return false;
+            }
+
             if (!this.capabilities || !this.capabilities.PTZ) {
-                throw new Error('PTZ non supporté par cette caméra');
+                logger.warn(`PTZ non supporté par la caméra ${this.name}`);
+                return false;
+            }
+
+            if (this.profiles.length === 0) {
+                logger.warn(`Aucun profil disponible pour ${this.name}`);
+                return false;
             }
 
             const profile = this.profiles[profileIndex];
@@ -260,30 +285,28 @@ class OnvifCamera {
                 zoom: direction.zoom || 0
             };
 
-            // Essayer d'abord relativeMove (mouvement relatif - plus approprié)
             try {
                 await new Promise((resolve, reject) => {
-                    if (typeof this.device.relativeMove === 'function') {
-                        this.device.relativeMove(options, (err) => {
-                            if (err) {
-                                reject(err);
-                            } else {
-                                resolve();
-                            }
-                        });
-                    } else {
-                        reject(new Error('relativeMove non disponible'));
-                    }
+                    this.device.relativeMove(profile.token, options, (err) => {
+                        if (err) reject(err);
+                        else resolve();
+                    });
                 });
                 
-                logger.debug(`Mouvement PTZ relatif exécuté pour ${this.name}:`, direction);
+                logger.debug(`Mouvement PTZ relatif réussi pour ${this.name}`);
                 return true;
+                
             } catch (error) {
                 logger.error(`Erreur lors du mouvement PTZ pour ${this.name}:`, error);
                 return false;
             }
         } catch (error) {
             logger.error(`Erreur lors du mouvement PTZ pour ${this.name}:`, error);
+            // ✅ Vérifier si l'erreur indique une déconnexion
+            if (error.message && (error.message.includes('ECONNREFUSED') || error.message.includes('timeout'))) {
+                logger.warn(`Caméra ${this.name} semble déconnectée, marquage comme offline`);
+                this.isConnected = false;
+            }
             return false;
         }
     }
@@ -309,7 +332,7 @@ class OnvifCamera {
     }
 
     // Presets PTZ
-    async getPtzPresets(profileIndex = 0) {
+    async fetchPtzPresets(profileIndex = 0) {
         try {
             // Vérifier si la caméra supporte PTZ
             if (!this.capabilities || !this.capabilities.PTZ) {
@@ -451,6 +474,31 @@ class OnvifCamera {
     disconnect() {
         this.isConnected = false;
         logger.info(`Caméra déconnectée: ${this.name}`);
+    }
+
+    // ✅ Amélioration : vérification de santé de la connexion
+    async healthCheck() {
+        try {
+            if (!this.device) {
+                this.isConnected = false;
+                return false;
+            }
+
+            // Test simple : récupérer les capacités
+            await new Promise((resolve, reject) => {
+                this.device.getCapabilities((err, result) => {
+                    if (err) reject(err);
+                    else resolve(result);
+                });
+            });
+
+            this.isConnected = true;
+            return true;
+        } catch (error) {
+            logger.debug(`Health check échoué pour ${this.name}:`, error.message);
+            this.isConnected = false;
+            return false;
+        }
     }
 }
 
