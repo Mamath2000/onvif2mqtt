@@ -21,11 +21,11 @@ default: help
 
 # Lancer uniquement la passerelle ONVIF-MQTT
 gateway:
-	cd /root/onvif && npm start
+	cd . && npm start
 
 # Lancer uniquement le client de test web
 test-client:
-	cd /root/onvif/test-client && npm start
+	cd ./test-client && npm start
 
 # Lancer la passerelle ET le client de test web (en parallèle)
 all:
@@ -33,15 +33,15 @@ all:
 	-tmux kill-session -t onvif_gateway 2>/dev/null || true
 	-tmux kill-session -t onvif_test_client 2>/dev/null || true
 	@echo "Lancement des nouvelles sessions..."
-	tmux new-session -d -s onvif_gateway 'cd /root/onvif && npm start'
-	tmux new-session -d -s onvif_test_client 'cd /root/onvif/test-client && npm start'
+	tmux new-session -d -s onvif_gateway 'cd . && npm start'
+	tmux new-session -d -s onvif_test_client 'cd ./test-client && npm start'
 	@echo "Passerelle et client de test lancés dans deux sessions tmux : onvif_gateway et onvif_test_client"
 	@echo "Utilisez 'tmux attach -t onvif_gateway' ou 'tmux attach -t onvif_test_client' pour voir les logs."
 
 # Installation des dépendances et configuration
 install:
-	cd /root/onvif && npm install
-	cp -n /root/onvif/.env.example /root/onvif/.env
-	cd /root/onvif/test-client && npm install
-	cp -n /root/onvif/test-client/.env.example /root/onvif/test-client/.env
+	cd . && npm install
+	cp -n ./.env.example ./.env
+	cd ./test-client && npm install
+	cp -n ./test-client/.env.example ./test-client/.env
 	@echo "Installation terminée. Les fichiers .env ont été copiés si absents."
