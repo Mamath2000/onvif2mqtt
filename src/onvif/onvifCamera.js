@@ -159,7 +159,7 @@ class OnvifCamera {
     //         const streamUri = await new Promise((resolve, reject) => {
     //             this.device.getStreamUri({
     //                 protocol: 'RTSP',
-    //                 profileToken: profile.token
+    //                 profileToken: profileIndex
     //             }, (err, result) => {
     //                 if (err) {
     //                     reject(err);
@@ -186,7 +186,7 @@ class OnvifCamera {
     //         const profile = this.profiles[profileIndex];
     //         const snapshotUri = await new Promise((resolve, reject) => {
     //             this.device.getSnapshotUri({
-    //                 profileToken: profile.token
+    //                 profileToken: profileIndex
     //             }, (err, result) => {
     //                 if (err) {
     //                     reject(err);
@@ -262,13 +262,12 @@ class OnvifCamera {
 
     async ptzMove(direction, profileIndex = 0) {
         try {
-            // ✅ Vérification de connexion avant opération PTZ
-            if (!this.isConnected) {
+            if (!this.isConnected || !this.device) {
                 logger.warn(`Caméra ${this.name} non connectée, impossible d'effectuer le mouvement PTZ`);
                 return false;
             }
 
-            if (!this.capabilities || !this.capabilities.PTZ) {
+            if (!this.hasPTZ) {
                 logger.warn(`PTZ non supporté par la caméra ${this.name}`);
                 return false;
             }
@@ -279,30 +278,34 @@ class OnvifCamera {
             }
 
             const profile = this.profiles[profileIndex];
+            
+            // ✅ Vérifier que le profil a un token
+            if (!profile) {
+                logger.error(`Profil invalide ou sans token pour ${this.name}`);
+                return false;
+            }
+
             const options = {
                 x: direction.x || 0,
                 y: direction.y || 0,
                 zoom: direction.zoom || 0
             };
 
-            try {
-                await new Promise((resolve, reject) => {
-                    this.device.relativeMove(profile.token, options, (err) => {
-                        if (err) reject(err);
-                        else resolve();
-                    });
+            // ✅ CORRECTION : Passer le callback correctement
+            await new Promise((resolve, reject) => {
+                this.device.relativeMove(options, (err) => {
+                    if (err) {
+                        logger.error(`Erreur lors du mouvement PTZ pour ${this.name}:`, err);
+                        reject(err);
+                    } else {
+                        logger.debug(`Mouvement PTZ relatif réussi pour ${this.name}`);
+                        resolve();
+                    }
                 });
-                
-                logger.debug(`Mouvement PTZ relatif réussi pour ${this.name}`);
-                return true;
-                
-            } catch (error) {
-                logger.error(`Erreur lors du mouvement PTZ pour ${this.name}:`, error);
-                return false;
-            }
+            });
+            return true;
         } catch (error) {
             logger.error(`Erreur lors du mouvement PTZ pour ${this.name}:`, error);
-            // ✅ Vérifier si l'erreur indique une déconnexion
             if (error.message && (error.message.includes('ECONNREFUSED') || error.message.includes('timeout'))) {
                 logger.warn(`Caméra ${this.name} semble déconnectée, marquage comme offline`);
                 this.isConnected = false;
@@ -311,19 +314,29 @@ class OnvifCamera {
         }
     }
 
+    // ✅ Corriger aussi ptzStop
     async ptzStop(profileIndex = 0) {
         try {
+            if (!this.isConnected || !this.device) {
+                logger.warn(`Caméra ${this.name} non connectée, impossible d'arrêter PTZ`);
+                return false;
+            }
+
+            if (this.profiles.length === 0) {
+                logger.warn(`Aucun profil disponible pour ${this.name}`);
+                return false;
+            }
+
+            const profile = this.profiles[profileIndex];
+
             await new Promise((resolve, reject) => {
-                this.device.stop((err) => {
-                    if (err) {
-                        reject(err);
-                    } else {
-                        resolve();
-                    }
+                this.device.stop({}, (err) => {
+                    if (err) reject(err);
+                    else resolve();
                 });
             });
-            
-            logger.debug(`Arrêt PTZ pour ${this.name}`);
+
+            logger.debug(`Arrêt PTZ réussi pour ${this.name}`);
             return true;
         } catch (error) {
             logger.error(`Erreur lors de l'arrêt PTZ pour ${this.name}:`, error);

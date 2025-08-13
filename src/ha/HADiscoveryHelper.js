@@ -117,7 +117,6 @@ class HADiscoveryHelper {
                     }
                 }
             };
-
             Object.keys(cameraStatus.presets).forEach(key => {
                 const preset = cameraStatus.presets[key];
                 cameraPayload.components[`${identifier}_preset_${preset}`] = {
@@ -127,6 +126,41 @@ class HADiscoveryHelper {
                     name: `Preset ${key}`,
                     command_topic: `${stateTopic}/goPreset`,
                     payload_press: preset
+                };
+            });
+
+            // Add PTZ movement buttons
+            const movements = [
+                { key: 'up', name: 'Up' },
+                { key: 'down', name: 'Down' },
+                { key: 'left', name: 'Left' },
+                { key: 'right', name: 'Right' },
+                { key: 'stop', name: 'Stop' }
+            ];
+            movements.forEach(move => {
+                cameraPayload.components[`${identifier}_move_${move.key}`] = {
+                    platform: 'button',
+                    object_id: `${identifier}_move_${move.key}`,
+                    unique_id: `${identifier}_move_${move.key}`,
+                    name: `Move ${move.name}`,
+                    command_topic: `${stateTopic}/cmd`,
+                    payload_press: `move-${move.key}`
+                };
+            });
+
+            // Add zoom buttons
+            const zooms = [
+                { key: 'zoom_in', name: 'Zoom In', payload: 'in' },
+                { key: 'zoom_out', name: 'Zoom Out', payload: 'out' }
+            ];
+            zooms.forEach(zoom => {
+                cameraPayload.components[`${identifier}_${zoom.key}`] = {
+                    platform: 'button',
+                    object_id: `${identifier}_${zoom.key}`,
+                    unique_id: `${identifier}_${zoom.key}`,
+                    name: zoom.name,
+                    command_topic: `${stateTopic}/cmd`,
+                    payload_press: `zoom-${zoom.payload}`
                 };
             });
 
