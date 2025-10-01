@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  onvif2mqtt:
+    build: .
+    container_name: onvif2mqtt
+    restart: unless-stopped
+    environment:
+      # MQTT Configuration
+      - MQTT_BROKER_URL=${MQTT_BROKER_URL:-mqtt://localhost:1883}
+      - MQTT_USERNAME=${MQTT_USERNAME}
+      - MQTT_PASSWORD=${MQTT_PASSWORD}
+      - MQTT_CLIENT_ID=${MQTT_CLIENT_ID:-onvif-gateway}
+      
+      # Home Assistant Integration
+      - HA_DISCOVERY_ENABLED=${HA_DISCOVERY_ENABLED:-true}
+      - HA_BASE_TOPIC=${HA_BASE_TOPIC:-onvif2mqtt}
+      - HA_DEVICE_NAME=${HA_DEVICE_NAME:-ONVIF Gateway}
+      - HA_DEVICE_ID=${HA_DEVICE_ID:-onvif_gateway}
+      
+      # ONVIF Cameras (ajustez selon vos besoins)
+      - ONVIF_CAMERAS=${ONVIF_CAMERAS}
+      
+      # Other configurations
+      - NODE_ENV=production
+      - TZ=${TZ:-Europe/Paris}
+    
+    volumes:
+      # Persister les logs
+      - ./logs:/app/logs
+      # Optionnel : monter un fichier de configuration personnalisé
+      # - ./config:/app/config:ro
+    
+    # Réseau : utiliser le réseau de l'hôte pour accéder aux caméras locales
+    network_mode: host
+    
+    # Alternative : utiliser un réseau personnalisé si vous préférez
+    # networks:
+    #   - onvif-network
+    # ports:
+    #   - "3000:3000"
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "node", "-e", "console.log('Health check OK')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# Réseau personnalisé (décommentez si vous n'utilisez pas host network)
+# networks:
+#   onvif-network:
+#     driver: bridge

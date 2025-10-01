@@ -1,4 +1,4 @@
-# ONVIF MQTT Controller
+# onvif2mqtt
 
 Application Node.js pour contrôler des caméras ONVIF et les intégrer à Home Assistant via MQTT.
 
@@ -14,6 +14,8 @@ Application Node.js pour contrôler des caméras ONVIF et les intégrer à Home 
 
 ## Installation
 
+### Installation classique
+
 1. Clonez ou téléchargez le projet
 2. Installez les dépendances :
 ```bash
@@ -26,6 +28,74 @@ cp .env.example .env
 ```
 
 4. Modifiez le fichier `.env` avec vos paramètres
+
+### Installation avec Docker 🐳
+
+#### Option 1 : Docker simple
+
+1. **Construire l'image Docker** :
+```bash
+npm run docker:build
+# ou directement
+docker build -t onvif2mqtt .
+```
+
+2. **Configurer les variables d'environnement** :
+```bash
+cp .env.docker .env
+# Modifiez le fichier .env avec vos paramètres
+```
+
+3. **Lancer le conteneur** :
+```bash
+# En premier plan
+npm run docker:run
+
+# En arrière-plan
+npm run docker:run-detached
+```
+
+#### Option 2 : Docker Compose (recommandé)
+
+1. **Configurer les variables d'environnement** :
+```bash
+cp .env.docker .env
+# Modifiez le fichier .env avec vos paramètres MQTT et caméras
+```
+
+2. **Lancer avec Docker Compose** :
+```bash
+npm run docker:compose
+# ou directement
+docker-compose up -d
+```
+
+3. **Voir les logs** :
+```bash
+npm run docker:compose-logs
+# ou
+docker-compose logs -f
+```
+
+#### Scripts Docker disponibles
+
+```bash
+npm run docker:build          # Construire l'image
+npm run docker:run             # Lancer en premier plan
+npm run docker:run-detached    # Lancer en arrière-plan
+npm run docker:stop            # Arrêter le conteneur
+npm run docker:logs            # Voir les logs
+npm run docker:compose         # Lancer avec docker-compose
+npm run docker:compose-logs    # Logs docker-compose
+```
+
+#### Configuration spéciale pour Docker
+
+Le conteneur utilise le réseau de l'hôte (`network_mode: host`) pour accéder aux caméras locales. Si vous préférez un réseau isolé, modifiez le fichier `docker-compose.yml` et exposez les ports nécessaires.
+
+**Volumes persistants** :
+- `./logs:/app/logs` : Logs de l'application
+- Vous pouvez ajouter d'autres volumes selon vos besoins
 
 ## Configuration
 

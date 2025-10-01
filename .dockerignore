@@ -1,0 +1,47 @@
+# Dépendances et caches
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Fichiers de développement
+.git
+.gitignore
+README.md
+CHANGELOG.md
+.env.example
+
+# Fichiers de test
+test-client/
+tests/
+
+# Logs
+logs/
+*.log
+
+# Fichiers temporaires
+.tmp
+.temp
+
+# Fichiers de l'éditeur
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Documentation
+docs/
+
+# Scripts de développement
+scripts/
+Makefile*
