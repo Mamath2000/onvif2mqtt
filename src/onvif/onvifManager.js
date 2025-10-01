@@ -2,13 +2,14 @@ const OnvifCamera = require('./onvifCamera');
 const logger = require('../utils/logger');
 
 class OnvifManager {
-    constructor() {
+    constructor(config = null) {
         this.cameras = new Map();
         this.statusUpdateInterval = null;
+        this.config = config;
     }
 
     addCamera(config) {
-        const camera = new OnvifCamera(config);
+        const camera = new OnvifCamera(config, this.config);
         this.cameras.set(config.name, camera);
         logger.info(`Caméra ajoutée: ${config.name}`);
         return camera;
@@ -131,7 +132,7 @@ class OnvifManager {
         }
 
         // Utiliser la vitesse configurée si aucune vitesse n'est spécifiée
-        const defaultSpeed = parseFloat(process.env.PTZ_DEFAULT_SPEED) || 0.5;
+        const defaultSpeed = this.config ? this.config.get('ptz.default_speed', 0.5) : 0.5;
         const moveSpeed = speed !== null ? speed : defaultSpeed;
 
         switch (direction.toLowerCase()) {

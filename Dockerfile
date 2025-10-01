@@ -34,8 +34,7 @@ RUN mkdir -p /app/logs && \
 # Passer à l'utilisateur non-root
 USER onvif
 
-# Exposer le port pour les health checks (si nécessaire)
-EXPOSE 3000
+# Aucun port exposé - communication uniquement via MQTT
 
 # Définir les variables d'environnement par défaut
 ENV NODE_ENV=production

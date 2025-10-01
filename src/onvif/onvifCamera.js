@@ -2,7 +2,7 @@ const onvif = require('onvif');
 const logger = require('../utils/logger');
 
 class OnvifCamera {
-    constructor(config) {
+    constructor(config, globalConfig = null) {
         this.name = config.name;
         this.host = config.host;
         this.port = config.port || 80;
@@ -14,6 +14,7 @@ class OnvifCamera {
         this.capabilities = null;
         this.presets = {};
         this.isConnecting = false; // Ajout d'un état de connexion en cours
+        this.globalConfig = globalConfig; // Configuration globale
     }
 
     async connect() {
@@ -35,7 +36,7 @@ class OnvifCamera {
             this.isConnected = false;
             this.device = null;
             
-            const timeout = parseInt(process.env.ONVIF_TIMEOUT) || 10000;
+            const timeout = this.globalConfig ? this.globalConfig.get('network.onvif_timeout', 10000) : 10000;
 
             // Créer le device ONVIF
             this.device = new onvif.Cam({
@@ -231,32 +232,32 @@ class OnvifCamera {
 
     // Fonctions PTZ (Pan-Tilt-Zoom)
     async moveUp(speed = 0.5) {
-        const moveStep = (parseFloat(process.env.PTZ_MOVE_STEP) || 0.1) * 1.5;
+        const moveStep = (this.globalConfig ? this.globalConfig.get('ptz.move_step', 0.1) : 0.1) * 1.5;
         return this.ptzMove({ y: moveStep });
     }
 
     async moveDown(speed = 0.5) {
-        const moveStep = (parseFloat(process.env.PTZ_MOVE_STEP) || 0.1) * 1.5;
+        const moveStep = (this.globalConfig ? this.globalConfig.get('ptz.move_step', 0.1) : 0.1) * 1.5;
         return this.ptzMove({ y: -moveStep });
     }
 
     async moveLeft(speed = 0.5) {
-        const moveStep = parseFloat(process.env.PTZ_MOVE_STEP) || 0.1;
+        const moveStep = this.globalConfig ? this.globalConfig.get('ptz.move_step', 0.1) : 0.1;
         return this.ptzMove({ x: -moveStep });
     }
 
     async moveRight(speed = 0.5) {
-        const moveStep = parseFloat(process.env.PTZ_MOVE_STEP) || 0.1;
+        const moveStep = this.globalConfig ? this.globalConfig.get('ptz.move_step', 0.1) : 0.1;
         return this.ptzMove({ x: moveStep });
     }
 
     async zoomIn(speed = 0.5) {
-        const zoomStep = parseFloat(process.env.PTZ_ZOOM_STEP) || 0.15;
+        const zoomStep = this.globalConfig ? this.globalConfig.get('ptz.zoom_step', 0.15) : 0.15;
         return this.ptzMove({ zoom: zoomStep });
     }
 
     async zoomOut(speed = 0.5) {
-        const zoomStep = parseFloat(process.env.PTZ_ZOOM_STEP) || 0.15;
+        const zoomStep = this.globalConfig ? this.globalConfig.get('ptz.zoom_step', 0.15) : 0.15;
         return this.ptzMove({ zoom: -zoomStep });
     }
 

@@ -1,0 +1,79 @@
+# Configuration onvif2mqtt - Fichier d'exemple
+# Copiez ce fichier vers config.conf et modifiez selon vos besoins
+# Format: section.key = value
+# Les commentaires commencent par #
+
+[mqtt]
+# URL du broker MQTT (format: mqtt://host:port ou mqtts://host:port pour SSL)
+broker_url = mqtt://localhost:1883
+# Authentification MQTT (laissez vide si pas d'authentification)
+username = 
+password = 
+# ID du client MQTT (sera suffixé automatiquement pour éviter les conflits)
+client_id = onvif-gateway
+
+[homeassistant]
+# Activation de la découverte automatique Home Assistant
+discovery_enabled = true
+# Préfixe pour la découverte Home Assistant
+discovery_prefix = homeassistant
+# Nom du périphérique dans Home Assistant
+device_name = ONVIF Gateway
+# ID unique du périphérique
+device_id = onvif_gateway
+# Topic de base pour les messages MQTT
+base_topic = onvif2mqtt
+
+[network]
+# Nombre maximum de tentatives de reconnexion
+max_reconnect_attempts = 3
+# Délai entre les tentatives de reconnexion (en millisecondes)
+reconnect_delay = 5000
+# Timeout pour les connexions ONVIF (en millisecondes)
+onvif_timeout = 10000
+
+[logging]
+# Niveau de log (error, warn, info, debug)
+level = info
+# Fichier de log principal
+file = logs/app.log
+
+[monitoring]
+# Intervalle de mise à jour des statuts (en millisecondes)
+status_update_interval = 30000
+# Intervalle de vérification de santé (en millisecondes)
+health_check_interval = 60000
+
+[ptz]
+# Amplitude pour les mouvements directionnels (valeurs entre 0.1 et 1.0)
+move_step = 0.1
+# Amplitude pour le zoom (valeurs entre 0.1 et 1.0)
+zoom_step = 0.15
+# Vitesse par défaut pour les commandes PTZ (valeurs entre 0.1 et 1.0)
+default_speed = 0.5
+
+# Configuration des caméras
+# Format: [camera.nom_unique]
+# Remplacez "nom_unique" par un identifiant unique pour chaque caméra
+
+[camera.exemple1]
+name = Caméra Salon
+host = 192.168.1.100
+port = 2020
+username = admin
+password = votre_mot_de_passe
+
+[camera.exemple2]
+name = Caméra Jardin
+host = 192.168.1.101
+port = 2020
+username = admin
+password = votre_mot_de_passe
+
+# Ajoutez autant de caméras que nécessaire en suivant le même format
+# [camera.nom_unique]
+# name = Nom affiché
+# host = Adresse IP
+# port = Port ONVIF (généralement 2020, 80 ou 8080)
+# username = Nom d'utilisateur
+# password = Mot de passe

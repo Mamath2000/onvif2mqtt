@@ -1,16 +1,22 @@
-require('dotenv').config();
 const logger = require('./utils/logger');
+const ConfigManager = require('./utils/configManager');
 const MqttManager = require('./mqtt/mqttManager');
 const OnvifManager = require('./onvif/onvifManager');
 const HADiscoveryHelper = require('./ha/HADiscoveryHelper');
 
 class OnvifMqttGateway {
     constructor() {
+        // Charger la configuration
+        this.config = new ConfigManager();
+        
+        // Configurer le logger avec la nouvelle configuration
+        logger.configure(this.config);
+        
         this.mqttManager = null;
         this.onvifManager = null;
         this.haHelper = null;
         this.isRunning = false;
-        this.isDiscoveryEnabled = process.env.HA_DISCOVERY_ENABLED === 'true';
+        this.isDiscoveryEnabled = this.config.get('homeassistant.discovery_enabled', true);
         this.healthCheckInterval = null; // ✅ AJOUT
     }
 
@@ -20,25 +26,25 @@ class OnvifMqttGateway {
 
             // Configuration MQTT
             const mqttConfig = {
-                brokerUrl: process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883',
-                username: process.env.MQTT_USERNAME,
-                password: process.env.MQTT_PASSWORD,
-                clientId: `${process.env.MQTT_CLIENT_ID || 'onvif-gateway'}-${Math.random().toString().slice(2, 6)}`,
-                baseTopic: process.env.HA_BASE_TOPIC || 'onvif2mqtt',
-                deviceName: process.env.HA_DEVICE_NAME || 'ONVIF Gateway',
-                deviceId: process.env.HA_DEVICE_ID || 'onvif_gateway'
+                brokerUrl: this.config.get('mqtt.broker_url', 'mqtt://localhost:1883'),
+                username: this.config.get('mqtt.username'),
+                password: this.config.get('mqtt.password'),
+                clientId: `${this.config.get('mqtt.client_id', 'onvif-gateway')}-${Math.random().toString().slice(2, 6)}`,
+                baseTopic: this.config.get('homeassistant.base_topic', 'onvif2mqtt'),
+                deviceName: this.config.get('homeassistant.device_name', 'ONVIF Gateway'),
+                deviceId: this.config.get('homeassistant.device_id', 'onvif_gateway')
             };
 
             // Initialiser les gestionnaires
             this.mqttManager = new MqttManager(mqttConfig);
-            this.onvifManager = new OnvifManager();
+            this.onvifManager = new OnvifManager(this.config);
 
             // Configurer les événements MQTT
             // this.mqttManager.on('cameraCommand', this.handleMqttCommand.bind(this));
             this.mqttManager.on('ptzCommand', this.handlePtzCommand.bind(this));
 
             // Charger les caméras depuis les variables d'environnement
-            const cameras = this.getCamerasFromEnv();
+            const cameras = this.getCamerasFromConfig();
             // Se connecter au broker MQTT en passant la liste des caméras
             await this.mqttManager.connect();
             // Ajouter les caméras à l'onvifManager
@@ -49,13 +55,13 @@ class OnvifMqttGateway {
             await this.connectAndSetupCameras();
 
             // Démarrer la surveillance des statuts avec l'intervalle configuré
-            const updateInterval = parseInt(process.env.STATUS_UPDATE_INTERVAL) || 30000;
+            const updateInterval = this.config.get('monitoring.status_update_interval', 30000);
             this.onvifManager.startStatusMonitoring(updateInterval, this.onStatusUpdate.bind(this));
 
             // Démarrer la découverte des appareils Home Assistant
             this.haHelper = new HADiscoveryHelper(this.mqttManager, {
                 isDiscoveryEnabled: this.isDiscoveryEnabled,
-                discoveryPrefix: process.env.HA_DISCOVERY_PREFIX || 'homeassistant',
+                discoveryPrefix: this.config.get('homeassistant.discovery_prefix', 'homeassistant'),
                 baseTopic: mqttConfig.baseTopic
             });
             this.haHelper.publishGatewayDevice(
@@ -77,24 +83,28 @@ class OnvifMqttGateway {
         }
     }
 
-    getCamerasFromEnv() {
+    getCamerasFromConfig() {
         const cameras = [];
-        let cameraIndex = 1;
-        while (true) {
-            const name = process.env[`CAMERA_${cameraIndex}_NAME`];
-            const host = process.env[`CAMERA_${cameraIndex}_HOST`];
-            const port = process.env[`CAMERA_${cameraIndex}_PORT`];
-            const username = process.env[`CAMERA_${cameraIndex}_USERNAME`];
-            const password = process.env[`CAMERA_${cameraIndex}_PASSWORD`];
-            if (!name || !host || !username || !password) break;
-            cameras.push({
-                name,
-                host,
-                port: parseInt(port) || 80,
-                username,
-                password
-            });
-            cameraIndex++;
+        const camerasConfig = this.config.getCameras();
+        
+        for (const [cameraKey, cameraConfig] of Object.entries(camerasConfig)) {
+            const name = cameraConfig.name;
+            const host = cameraConfig.host;
+            const port = cameraConfig.port;
+            const username = cameraConfig.username;
+            const password = cameraConfig.password;
+
+            if (name && host && username && password) {
+                cameras.push({
+                    name,
+                    host,
+                    port: parseInt(port) || 80,
+                    username,
+                    password
+                });
+            } else {
+                logger.warn(`Configuration incomplète pour la caméra: ${cameraKey}`);
+            }
         }
         return cameras;
     }
@@ -291,7 +301,7 @@ class OnvifMqttGateway {
 
     // ✅ NOUVELLE MÉTHODE : Surveillance de santé globale
     startHealthCheck() {
-        const healthCheckInterval = parseInt(process.env.HEALTH_CHECK_INTERVAL) || 60000;
+        const healthCheckInterval = this.config.get('monitoring.health_check_interval', 60000);
         
         this.healthCheckInterval = setInterval(async () => {
             try {

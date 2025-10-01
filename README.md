@@ -24,10 +24,10 @@ npm install
 
 3. Copiez le fichier de configuration :
 ```bash
-cp .env.example .env
+cp config.conf.example config.conf
 ```
 
-4. Modifiez le fichier `.env` avec vos paramètres
+4. Modifiez le fichier `config.conf` avec vos paramètres
 
 ### Installation avec Docker 🐳
 
@@ -42,8 +42,8 @@ docker build -t onvif2mqtt .
 
 2. **Configurer les variables d'environnement** :
 ```bash
-cp .env.docker .env
-# Modifiez le fichier .env avec vos paramètres
+cp config.conf.example config.conf
+# Modifiez le fichier config.conf avec vos paramètres
 ```
 
 3. **Lancer le conteneur** :
@@ -59,8 +59,8 @@ npm run docker:run-detached
 
 1. **Configurer les variables d'environnement** :
 ```bash
-cp .env.docker .env
-# Modifiez le fichier .env avec vos paramètres MQTT et caméras
+cp config.conf.example config.conf
+# Modifiez le fichier config.conf avec vos paramètres MQTT et caméras
 ```
 
 2. **Lancer avec Docker Compose** :
@@ -95,37 +95,72 @@ Le conteneur utilise le réseau de l'hôte (`network_mode: host`) pour accéder 
 
 **Volumes persistants** :
 - `./logs:/app/logs` : Logs de l'application
-- Vous pouvez ajouter d'autres volumes selon vos besoins
+- `./config.conf:/app/config.conf:ro` : Fichier de configuration (lecture seule)
+
+**Important** : Assurez-vous que le fichier `config.conf` existe avant de lancer Docker.
 
 ## Configuration
 
-### Variables d'environnement principales
+L'application utilise maintenant un fichier de configuration `config.conf` au format INI pour une meilleure organisation et lisibilité.
 
-```env
-# Configuration MQTT
-MQTT_BROKER_URL=mqtt://localhost:1883
-MQTT_USERNAME=votre_utilisateur
-MQTT_PASSWORD=votre_mot_de_passe
+### Format du fichier config.conf
 
-# Configuration Home Assistant
-HA_DISCOVERY_PREFIX=homeassistant
-HA_DEVICE_NAME=ONVIF Controller
+Le fichier de configuration est organisé en sections avec une syntaxe simple :
+
+```ini
+[section]
+key = value
+
+# Les commentaires commencent par #
+[camera.nom_camera]
+name = Nom affiché
+host = 192.168.1.100
+```
+
+### Sections principales
+
+```ini
+[mqtt]
+broker_url = mqtt://192.168.1.190:1883
+username = votre_utilisateur
+password = votre_mot_de_passe
+client_id = onvif-gateway
+
+[homeassistant]
+discovery_enabled = true
+discovery_prefix = homeassistant
+device_name = ONVIF Gateway
+base_topic = onvif2mqtt
+
+[ptz]
+move_step = 0.1
+zoom_step = 0.15
+default_speed = 0.5
 
 # Configuration des caméras
-CAMERA_1_NAME=Camera Salon
-CAMERA_1_HOST=192.168.1.100
-CAMERA_1_USERNAME=admin
-CAMERA_1_PASSWORD=password
+[camera.salon]
+name = Caméra Salon
+host = 192.168.1.100
+port = 2020
+username = admin
+password = password123
 
-CAMERA_2_NAME=Camera Jardin
-CAMERA_2_HOST=192.168.1.101
-CAMERA_2_USERNAME=admin
-CAMERA_2_PASSWORD=password
-
-# Configuration PTZ
-PTZ_MOVE_DURATION=500     # Durée des mouvements en ms
-PTZ_ZOOM_DURATION=300     # Durée du zoom en ms
+[camera.jardin]
+name = Caméra Jardin
+host = 192.168.1.101
+port = 2020
+username = admin
+password = password456
 ```
+
+### Configuration des caméras
+
+Chaque caméra est définie dans une section `[camera.identifiant]` :
+- **identifiant** : Nom unique pour la caméra (utilisé en interne)
+- **name** : Nom affiché dans Home Assistant
+- **host** : Adresse IP de la caméra
+- **port** : Port ONVIF (généralement 2020, 80 ou 8080)
+- **username/password** : Identifiants de connexion
 
 ### Configuration PTZ
 
@@ -159,70 +194,46 @@ npm start
 npm run dev
 ```
 
-### Interface web
+L'application communique uniquement via **MQTT** avec Home Assistant. Aucune interface web n'est fournie.
 
-Une fois démarrée, l'application est accessible via :
-- **Interface web** : http://localhost:3000
-- **API REST** : http://localhost:3000/api/
+## Utilisation via MQTT
 
-### API REST
+### Topics de commande
 
-#### Caméras
+L'application écoute les commandes MQTT sur les topics suivants :
 
-- `GET /api/cameras` - Liste toutes les caméras
-- `GET /api/cameras/:name` - Informations d'une caméra
-- `POST /api/cameras` - Ajouter une caméra
-- `DELETE /api/cameras/:name` - Supprimer une caméra
-- `POST /api/cameras/:name/connect` - Reconnecter une caméra
+**Format des topics de commande :**
+- `{base_topic}/camera/{camera_id}/ptz/{command}`
+- `{base_topic}/camera/{camera_id}/preset/{preset_id}`
 
-#### Images et flux
+**Exemples avec base_topic = "onvif2mqtt" :**
+- `onvif2mqtt/camera/camera_salon/ptz/move`
+- `onvif2mqtt/camera/camera_salon/ptz/stop`
+- `onvif2mqtt/camera/camera_salon/preset/1`
 
-- `GET /api/cameras/:name/snapshot` - Capturer une image
-- `GET /api/cameras/:name/stream` - Obtenir l'URI du flux
+### Payload des commandes PTZ
 
-#### Contrôles PTZ
-
-- `POST /api/cameras/:name/ptz/move` - Déplacer la caméra
-- `POST /api/cameras/:name/ptz/stop` - Arrêter le mouvement
-- `GET /api/cameras/:name/presets` - Liste des presets
-- `POST /api/cameras/:name/presets/:preset` - Aller à un preset
-
-#### Découverte
-
-- `POST /api/discover` - Rechercher des caméras sur le réseau
-
-### Exemples d'utilisation
-
-#### Ajouter une caméra via API
-
-```bash
-curl -X POST http://localhost:3000/api/cameras \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Camera Bureau",
-    "host": "192.168.1.102",
-    "username": "admin",
-    "password": "password123"
-  }'
+#### Mouvement PTZ
+```json
+{
+  "direction": "up|down|left|right",
+  "speed": 0.5
+}
 ```
 
-#### Contrôler le PTZ
-
-```bash
-# Déplacer vers le haut
-curl -X POST http://localhost:3000/api/cameras/Camera%20Bureau/ptz/move \
-  -H "Content-Type: application/json" \
-  -d '{"direction": "up", "speed": 0.5}'
-
-# Arrêter le mouvement
-curl -X POST http://localhost:3000/api/cameras/Camera%20Bureau/ptz/stop
+#### Zoom
+```json
+{
+  "direction": "in|out", 
+  "speed": 0.5
+}
 ```
 
-#### Capturer une image
-
-```bash
-curl http://localhost:3000/api/cameras/Camera%20Bureau/snapshot \
-  --output snapshot.jpg
+#### Arrêt
+```json
+{
+  "command": "stop"
+}
 ```
 
 ## Intégration MQTT
@@ -275,28 +286,17 @@ En plus de l'intégration Home Assistant, l'application propose une structure MQ
 
 ### Configuration des amplitudes PTZ
 
-Les amplitudes de déplacement PTZ sont configurables via des variables d'environnement ou l'API REST :
+Les amplitudes de déplacement PTZ sont configurables dans le fichier `config.conf` :
 
-#### Variables d'environnement
-```bash
-PTZ_MOVE_STEP=0.1          # Amplitude pour les mouvements (0.01-1.0)
-PTZ_ZOOM_STEP=0.15         # Amplitude pour le zoom (0.01-1.0)  
-PTZ_DEFAULT_SPEED=0.5      # Vitesse par défaut (0.01-1.0)
+#### Configuration dans config.conf
+```ini
+[ptz]
+move_step = 0.1          # Amplitude pour les mouvements (0.01-1.0)
+zoom_step = 0.15         # Amplitude pour le zoom (0.01-1.0)  
+default_speed = 0.5      # Vitesse par défaut (0.01-1.0)
 ```
 
-#### API REST
-- **GET** `/api/ptz/config` - Récupérer la configuration actuelle
-- **POST** `/api/ptz/config` - Modifier la configuration
-
-Exemple de modification :
-```bash
-curl -X POST http://localhost:3000/api/ptz/config \
-  -H "Content-Type: application/json" \
-  -d '{"moveStep": 0.2, "zoomStep": 0.1, "defaultSpeed": 0.6}'
-```
-
-#### Interface Web
-Une section **Configuration PTZ** est disponible dans l'interface web (`http://localhost:3000`) pour ajuster les paramètres en temps réel.
+**Redémarrage requis** : Les modifications de configuration nécessitent un redémarrage de l'application.
 | `onvif2mqtt/{cam_id}/goPreset` | Commande | Aller à un preset | ID du preset | `onvif2mqtt/camera_salon/goPreset` |
 
 #### Exemples d'utilisation ONVIF2MQTT
@@ -517,16 +517,13 @@ script:
   camera_preset_cours:
     alias: "Caméra - Vue Cours"
     sequence:
-      - service: rest_command.camera_preset
+      - service: onvif2mqtt.camera_preset
         data:
           camera: "Camera Cours0"
           preset: "1"
 
-# Configuration REST command
-rest_command:
-  camera_preset:
-    url: "http://localhost:3000/api/cameras/{{ camera }}/presets/{{ preset }}"
-    method: POST
+# Les commandes REST ne sont plus supportées
+# Utilisez uniquement les commandes MQTT
 ```
 
 #### Cartes Lovelace
@@ -670,8 +667,8 @@ src/
 3. **Problèmes Home Assistant Discovery**
    ```bash
    # Forcer la republication de la découverte
-   # Redémarrer l'application ou reconnecter une caméra
-   curl -X POST http://localhost:3000/api/cameras/Camera%20Salon/connect
+   # Redémarrer l'application
+   npm start
    ```
 
 ### Caméras non détectées
@@ -685,17 +682,15 @@ src/
    telnet 192.168.1.100 80
    ```
 
-2. **Testez la connexion manuelle via l'interface web**
-   - Ouvrez http://localhost:3000
-   - Utilisez la fonction "Découverte automatique"
-   - Ajoutez manuellement via l'interface
+2. **Vérifiez la configuration dans config.conf**
+   - Assurez-vous que l'adresse IP est correcte
+   - Vérifiez les identifiants (username/password)
+   - Vérifiez le port ONVIF (généralement 80, 2020 ou 8080)
 
-3. **Vérifiez les credentials ONVIF de la caméra**
+3. **Testez la connexion ONVIF**
    ```bash
-   # Test API direct
-   curl -X POST http://localhost:3000/api/cameras \
-     -H "Content-Type: application/json" \
-     -d '{"name":"Test","host":"192.168.1.100","username":"admin","password":"password"}'
+   # Vérifiez les logs de l'application
+   tail -f logs/app.log
    ```
 
 ### Problèmes PTZ
@@ -710,12 +705,10 @@ src/
 
 3. **Testez avec des vitesses différentes (0.1 à 1.0)**
    ```bash
-   # Test PTZ via API
-   curl -X POST http://localhost:3000/api/cameras/Camera%20Salon/ptz/move \
-     -H "Content-Type: application/json" \
-     -d '{"direction": "up", "speed": 0.5}'
+   # Testez via MQTT avec différentes vitesses
+   mosquitto_pub -h localhost -t "onvif2mqtt/camera/camera_salon/ptz/move" \
+     -m '{"direction": "up", "speed": 0.5}'
    ```
-
 ### Problèmes de presets
 
 1. **Les presets ne s'affichent pas**
@@ -724,11 +717,11 @@ src/
 
 2. **Échec d'activation des presets**
    ```bash
-   # Test direct de l'API presets
-   curl "http://localhost:3000/api/cameras/Camera%20Cours0/presets"
+   # Consultez les logs pour voir les erreurs
+   tail -f logs/app.log | grep -i preset
    
-   # Test activation d'un preset
-   curl -X POST "http://localhost:3000/api/cameras/Camera%20Cours0/presets/1"
+   # Testez via MQTT
+   mosquitto_pub -h localhost -t "onvif2mqtt/camera/camera_cours0/preset/1" -m "{}"
    ```
 
 ### Performance et stabilité

@@ -9,7 +9,8 @@ yarn-error.log*
 .gitignore
 README.md
 CHANGELOG.md
-.env.example
+.env*
+config.conf
 
 # Fichiers de test
 test-client/
