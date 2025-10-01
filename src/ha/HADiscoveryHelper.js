@@ -35,7 +35,7 @@ class HADiscoveryHelper {
                 components: {
                     onvif2mqtt_state: {
                         platform: 'binary_sensor',
-                        object_id: 'onvif2mqtt_state',
+                        default_entity_id : 'onvif2mqtt_state',
                         unique_id: 'onvif2mqtt_state',
                         name: 'State',
                         force_update: true,
@@ -102,7 +102,7 @@ class HADiscoveryHelper {
                 components: {
                     [`${identifier}_state`]: {
                         platform: 'binary_sensor',
-                        object_id: `${identifier}_state`,
+                        default_entity_id : `${identifier}_state`,
                         unique_id: `${identifier}_state`,
                         availability: [{
                             topic: `${this.baseTopic}/lwt`,
@@ -121,7 +121,7 @@ class HADiscoveryHelper {
                 const preset = cameraStatus.presets[key];
                 cameraPayload.components[`${identifier}_preset_${preset}`] = {
                     platform: 'button',
-                    object_id: `${identifier}_preset_${key}`,
+                    default_entity_id : `${identifier}_preset_${key}`,
                     unique_id: `${identifier}_preset_${preset}`,
                     name: `Preset ${key}`,
                     command_topic: `${stateTopic}/goPreset`,
@@ -140,7 +140,7 @@ class HADiscoveryHelper {
             movements.forEach(move => {
                 cameraPayload.components[`${identifier}_move_${move.key}`] = {
                     platform: 'button',
-                    object_id: `${identifier}_move_${move.key}`,
+                    default_entity_id : `${identifier}_move_${move.key}`,
                     unique_id: `${identifier}_move_${move.key}`,
                     name: `Move ${move.name}`,
                     command_topic: `${stateTopic}/cmd`,
@@ -156,7 +156,7 @@ class HADiscoveryHelper {
             zooms.forEach(zoom => {
                 cameraPayload.components[`${identifier}_${zoom.key}`] = {
                     platform: 'button',
-                    object_id: `${identifier}_${zoom.key}`,
+                    default_entity_id : `${identifier}_${zoom.key}`,
                     unique_id: `${identifier}_${zoom.key}`,
                     name: zoom.name,
                     command_topic: `${stateTopic}/cmd`,
