@@ -26,7 +26,7 @@ Build l'image Docker, la publie sur Docker Hub et incrémente automatiquement la
 ```bash
 ./scripts/build-docker-image.sh
 # ou  
-make build-and-publish
+make docker-build-push
 ```
 
 **Fonctionnalités :**
@@ -60,7 +60,7 @@ git add .
 git commit -m "feat: nouvelle fonctionnalité"
 
 # 2. Build et publication avec auto-increment
-make build-and-publish
+make docker-build-push
 # Version 1.0.0 → 1.0.1 automatiquement
 # + Publication Docker Hub
 # + Commit de version
@@ -117,7 +117,7 @@ DOCKER_USER="votre-username-dockerhub"
 make help                 # Aide complète
 make setup                # Configuration initiale
 make check-env           # Vérifier l'environnement
-make build-and-publish   # Build + Publication + Version++
+make docker-build-push   # Build + Publication + Version++
 make docker-compose-up   # Build local + Deploy
 make version-bump        # Increment version manuellement
 ```

@@ -15,7 +15,7 @@ NC := \033[0m # No Color
 
 .PHONY: help install dev start test lint clean docker-build docker-run docker-stop docker-logs setup
 .PHONY: service-install service-uninstall service-start service-stop service-logs
-.PHONY: docker-build-and-publish version-bump check-env
+.PHONY: docker-build-push version-bump check-env
 
 # ========================
 # Aide
@@ -30,7 +30,7 @@ help:
 	@echo ""
 	@echo "$(YELLOW)🐳 DOCKER & PUBLICATION:$(NC)"
 	@echo "  $(GREEN)make docker-build$(NC)        - Construction de l'image Docker locale"
-	@echo "  $(GREEN)make docker-build-and-publish$(NC)   - Build + Publication Docker Hub + Version bump"
+	@echo "  $(GREEN)make docker-build-push$(NC)   - Build + Publication Docker Hub + Version bump"
 	@echo "  $(GREEN)make version-bump$(NC)        - Incrémenter manuellement la version"
 	@echo ""
 	@echo "$(YELLOW)🔧 CONFIGURATION:$(NC)"
@@ -99,11 +99,6 @@ docker-build:
 	@echo "$(GREEN)Construction de l'image Docker...$(NC)"
 	docker build -t $(DOCKER_IMAGE):$(DOCKER_TAG) .
 
-# Lancement Docker
-docker-run:
-	@echo "$(GREEN)Lancement du conteneur Docker...$(NC)"
-	docker run -d --name onvif2mqtt --env-file .env -p 3000:3000 $(DOCKER_IMAGE):$(DOCKER_TAG)
-
 # Arrêt Docker
 docker-stop:
 	@echo "$(GREEN)Arrêt du conteneur Docker...$(NC)"
@@ -157,7 +152,7 @@ service-logs:
 # ========================
 
 # Build et publication Docker Hub avec incrémentation de version
-docker-build-and-publish: check-env
+docker-build-push: check-env
 	@echo "$(GREEN)🚀 Build et publication Docker Hub avec incrémentation de version...$(NC)"
 	./scripts/build-docker-image.sh
 
@@ -194,10 +189,6 @@ check-env:
 	fi
 	@if [ ! -f "scripts/build-docker-image.sh" ] || [ ! -x "scripts/build-docker-image.sh" ]; then \
 		echo "$(RED)❌ Script build-docker-image.sh manquant ou non exécutable$(NC)"; \
-		exit 1; \
-	fi
-	@if [ ! -f "scripts/build-and-up.sh" ] || [ ! -x "scripts/build-and-up.sh" ]; then \
-		echo "$(RED)❌ Script build-and-up.sh manquant ou non exécutable$(NC)"; \
 		exit 1; \
 	fi
 	@echo "$(GREEN)✅ Tous les prérequis sont satisfaits$(NC)"

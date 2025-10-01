@@ -36,7 +36,7 @@ make docker-compose-up    # Build + Deploy local avec Docker Compose
 ```bash
 git add .
 git commit -m "feat: nouvelle fonctionnalité"
-make build-and-publish    # Build + Publication + Version++ + Commit
+make docker-build-push    # Build + Publication + Version++ + Commit
 git push origin main      # Push des changements
 ```
 
@@ -63,7 +63,7 @@ git merge feature/ma-nouvelle-fonctionnalite
 ### Publication
 ```bash
 # 5. Publication avec versioning automatique
-make build-and-publish
+make docker-build-push
 # → Version 1.0.1 → 1.0.2 automatiquement
 # → Images Docker publiées sur Docker Hub
 # → Commit de version automatique
@@ -91,7 +91,7 @@ MAJOR.MINOR.PATCH
 1.0.2
 ```
 
-- **PATCH** : Incrémentation automatique à chaque `make build-and-publish`
+- **PATCH** : Incrémentation automatique à chaque `make docker-build-push`
 - **MINOR** : Incrémentation manuelle pour nouvelles fonctionnalités
 - **MAJOR** : Incrémentation manuelle pour changements incompatibles
 
@@ -129,7 +129,7 @@ make docker-logs          # Voir les logs
 
 ### Publication et versioning
 ```bash
-make build-and-publish    # Publication complète + version++
+make docker-build-push    # Publication complète + version++
 make version-bump         # Incrémenter version manuellement
 ```
 
@@ -226,7 +226,7 @@ jobs:
       - name: Login Docker Hub
         run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
       - name: Build and publish
-        run: make build-and-publish
+        run: make docker-build-push
 ```
 
 ## 📊 Monitoring et logs
