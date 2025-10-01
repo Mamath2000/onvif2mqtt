@@ -11,6 +11,9 @@ yarn-error.log*
 # Variables d'environnement
 .env
 
+# Configuration locale (contient des informations sensibles)
+config.conf
+
 # Fichiers temporaires
 .tmp/
 .cache/
