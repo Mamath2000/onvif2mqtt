@@ -37,18 +37,20 @@ const logger = winston.createLogger({
             filename: loggerConfig.logFile,
             maxsize: 5242880, // 5MB
             maxFiles: 5
+        }),
+        // Console transport TOUJOURS actif pour les logs Docker
+        new winston.transports.Console({
+            format: winston.format.combine(
+                winston.format.colorize(),
+                winston.format.simple()
+            )
         })
     ]
 });
 
-// En mode développement, ajouter la console
+// En mode développement, garder la configuration existante
 if (loggerConfig.isDevelopment) {
-    logger.add(new winston.transports.Console({
-        format: winston.format.combine(
-            winston.format.colorize(),
-            winston.format.simple()
-        )
-    }));
+    logger.info('Mode développement détecté - logs colorisés activés');
 }
 
 /**

@@ -22,7 +22,9 @@ class OnvifMqttGateway {
 
     async init() {
         try {
-            logger.info('Initialisation de la gateway ONVIF-MQTT...');
+            logger.info('🚀 Démarrage de ONVIF2MQTT Gateway...');
+            logger.info(`📋 Version: ${process.env.VERSION || 'dev'}`);
+            logger.info(`🏠 Mode: ${process.env.NODE_ENV || 'development'}`);
 
             // Configuration MQTT
             const mqttConfig = {
@@ -34,6 +36,9 @@ class OnvifMqttGateway {
                 deviceName: this.config.get('homeassistant.device_name', 'ONVIF Gateway'),
                 deviceId: this.config.get('homeassistant.device_id', 'onvif_gateway')
             };
+
+            logger.info(`🌐 Configuration MQTT: ${mqttConfig.brokerUrl}`);
+            logger.info(`📡 Topic de base: ${mqttConfig.baseTopic}`);
 
             // Initialiser les gestionnaires
             this.mqttManager = new MqttManager(mqttConfig);
@@ -75,10 +80,11 @@ class OnvifMqttGateway {
             });
 
             this.isRunning = true;
-            logger.info('Contrôleur ONVIF-MQTT démarré avec succès');
+            logger.info('✅ Contrôleur ONVIF-MQTT démarré avec succès');
+            logger.info('🔗 Connexions établies et prêt à recevoir des commandes');
 
         } catch (error) {
-            logger.error('Erreur lors de l\'initialisation:', error);
+            logger.error('❌ Erreur lors de l\'initialisation:', error);
             throw error;
         }
     }
@@ -86,6 +92,8 @@ class OnvifMqttGateway {
     getCamerasFromConfig() {
         const cameras = [];
         const camerasConfig = this.config.getCameras();
+        
+        logger.info(`🔍 Chargement des caméras depuis la configuration...`);
         
         for (const [cameraKey, cameraConfig] of Object.entries(camerasConfig)) {
             const name = cameraConfig.name;
@@ -102,10 +110,13 @@ class OnvifMqttGateway {
                     username,
                     password
                 });
+                logger.info(`📹 Caméra trouvée: ${name} (${host}:${port || 80})`);
             } else {
-                logger.warn(`Configuration incomplète pour la caméra: ${cameraKey}`);
+                logger.warn(`⚠️  Configuration incomplète pour la caméra: ${cameraKey}`);
             }
         }
+        
+        logger.info(`📊 Total: ${cameras.length} caméra(s) configurée(s)`);
         return cameras;
     }
 
@@ -373,13 +384,13 @@ async function main() {
 
     // Gestion des signaux d'arrêt
     process.on('SIGINT', async () => {
-        logger.info('Signal SIGINT reçu, arrêt en cours...');
+        logger.info('🛑 Signal SIGINT reçu, arrêt propre en cours...');
         await gateway.shutdown();
         process.exit(0);
     });
 
     process.on('SIGTERM', async () => {
-        logger.info('Signal SIGTERM reçu, arrêt en cours...');
+        logger.info('🛑 Signal SIGTERM reçu, arrêt propre en cours...');
         await gateway.shutdown();
         process.exit(0);
     });
@@ -390,10 +401,10 @@ async function main() {
         // ✅ AJOUT : Démarrer la surveillance de santé globale
         gateway.startHealthCheck();
         
-        logger.info('Gateway ONVIF-MQTT démarrée avec succès');
-        logger.info('Passerelle prête à recevoir des commandes MQTT');
+        logger.info('🎉 Gateway ONVIF-MQTT démarrée avec succès !');
+        logger.info('📞 Passerelle prête à recevoir des commandes MQTT');
     } catch (error) {
-        logger.error('Erreur lors du démarrage:', error);
+        logger.error('💥 Erreur fatale lors du démarrage:', error);
         process.exit(1);
     }
 }

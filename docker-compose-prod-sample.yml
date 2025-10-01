@@ -1,0 +1,32 @@
+services:
+  onvif2mqtt:
+    image: mathmath350/onvif2mqtt:latest
+    container_name: onvif2mqtt
+    restart: unless-stopped
+    
+    # Réseau host pour accès aux caméras
+    network_mode: host
+    
+    volumes:
+      - ./logs:/app/logs
+      - ./config.conf:/app/config.conf:ro
+
+    # Variables d'environnement
+    environment:
+      - NODE_ENV=production
+      - TZ=Europe/Paris  # Ajustez selon votre timezone
+    
+    # Health check amélioré
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "node.*app.js"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # Configuration des logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
