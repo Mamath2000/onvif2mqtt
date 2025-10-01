@@ -4,66 +4,64 @@
 NODE_VERSION := 18
 DOCKER_IMAGE := onvif2mqtt
 DOCKER_TAG := latest
+DOCKER_USER := mathmath350  # Remplacez par votre nom d'utilisateur Docker Hub
 
 # Couleurs pour les messages
 GREEN := \033[0;32m
 YELLOW := \033[1;33m
 RED := \033[0;31m
+BLUE := \033[0;34m
 NC := \033[0m # No Color
 
-.PHONY: help install dev start test lint clean docker-build docker-run docker-stop docker-logs setup gateway test-client all
+.PHONY: help install dev start test lint clean docker-build docker-run docker-stop docker-logs setup
 .PHONY: service-install service-uninstall service-start service-stop service-logs
+.PHONY: docker-build-and-publish version-bump check-env
 
 # ========================
 # Aide
 # ========================
 help:
-	@echo "$(GREEN)onvif2mqtt - Makefile$(NC)"
+	@echo "$(GREEN)🚀 onvif2mqtt - Makefile$(NC)"
 	@echo ""
-	@echo "$(YELLOW)Installation :$(NC)"
-	@echo "  $(GREEN)make setup$(NC)        - Configuration initiale du projet"
-	@echo "  $(GREEN)make install$(NC)      - Installation des dépendances"
-	@echo "  $(GREEN)make clean$(NC)        - Nettoyage des fichiers temporaires"
+	@echo "$(YELLOW)⚡ COMMANDES PRINCIPALES:$(NC)"
+	@echo "  $(GREEN)make setup$(NC)               - Configuration initiale complète"
+	@echo "  $(GREEN)make start$(NC)               - Lancement en mode production"
+	@echo "  $(GREEN)make dev$(NC)                 - Lancement en mode développement"
 	@echo ""
-	@echo "$(YELLOW)Exécution & Debug :$(NC)"
-	@echo "  $(GREEN)make dev$(NC)          - Lancement en mode développement"
-	@echo "  $(GREEN)make start$(NC)        - Lancement en mode production"
-	@echo "  $(GREEN)make gateway$(NC)      - Lancer uniquement la passerelle ONVIF-MQTT"
-	@echo "  $(GREEN)make test-client$(NC)  - Lancer uniquement le client de test web"
-	@echo "  $(GREEN)make all$(NC)          - Lancer passerelle + client de test (tmux)"
+	@echo "$(YELLOW)🐳 DOCKER & PUBLICATION:$(NC)"
+	@echo "  $(GREEN)make docker-build$(NC)        - Construction de l'image Docker locale"
+	@echo "  $(GREEN)make docker-build-and-publish$(NC)   - Build + Publication Docker Hub + Version bump"
+	@echo "  $(GREEN)make version-bump$(NC)        - Incrémenter manuellement la version"
 	@echo ""
-	@echo "$(YELLOW)Docker :$(NC)"
-	@echo "  $(GREEN)make docker-build$(NC) - Construction de l'image Docker"
-	@echo "  $(GREEN)make docker-run$(NC)   - Lancement du conteneur Docker"
-	@echo "  $(GREEN)make docker-stop$(NC)  - Arrêt du conteneur Docker"
-	@echo "  $(GREEN)make docker-logs$(NC)  - Affichage des logs Docker"
+	@echo "$(YELLOW)🔧 CONFIGURATION:$(NC)"
+	@echo "  $(GREEN)make install$(NC)             - Installation des dépendances"
+	@echo "  $(GREEN)make check-env$(NC)           - Vérifier la configuration"
+	@echo "  $(GREEN)make clean$(NC)               - Nettoyage des fichiers temporaires"
 	@echo ""
-	@echo "$(YELLOW)Service :$(NC)"
-	@echo "  $(GREEN)make service-install$(NC)   - Installer le service systemd (démarrage auto)"
-	@echo "  $(GREEN)make service-uninstall$(NC) - Désinstaller le service systemd"
-	@echo "  $(GREEN)make service-start$(NC)     - Démarrer le service systemd"
-	@echo "  $(GREEN)make service-stop$(NC)      - Arrêter le service systemd"
-	@echo "  $(GREEN)make service-logs$(NC)      - Afficher les logs du service systemd"
+	@echo "$(YELLOW)🔄 SERVICE SYSTÈME:$(NC)"
+	@echo "  $(GREEN)make service-install$(NC)     - Installer le service systemd"
+	@echo "  $(GREEN)make service-start$(NC)       - Démarrer le service systemd"
+	@echo "  $(GREEN)make service-stop$(NC)        - Arrêter le service systemd"
+	@echo "  $(GREEN)make service-logs$(NC)        - Logs du service systemd"
+	@echo ""
+	@echo "$(BLUE)📦 Version actuelle: $$(grep '"version"' package.json | sed 's/.*"version": "\(.*\)".*/\1/')$(NC)"
 	@echo ""
 
 # ========================
 # Installation
 # ========================
 
-# Configuration initiale
-setup: install
-	@echo "$(GREEN)Configuration initiale...$(NC)"
-	@if [ ! -f .env ]; then cp .env.example .env; echo "$(YELLOW)Fichier .env créé. Veuillez le configurer.$(NC)"; fi
-	@if [ ! -f test-client/.env ]; then cp test-client/.env.example test-client/.env; echo "$(YELLOW)Fichier .env client de test créé.$(NC)"; fi
-	@echo "$(GREEN)Projet configuré avec succès !$(NC)"
+# Configuration initiale du projet
+setup:
+	@echo "$(GREEN)🚀 Configuration initiale du projet onvif2mqtt...$(NC)"
+	./scripts/setup-env.sh
+	@echo "$(GREEN)✅ Configuration terminée !$(NC)"
 
 # Installation des dépendances
 install:
 	@echo "$(GREEN)Installation des dépendances Node.js...$(NC)"
 	npm install
-	@echo "$(GREEN)Installation des dépendances du client de test...$(NC)"
-	cd ./test-client && npm install
-
+	
 # ========================
 # Exécution & Debug
 # ========================
@@ -78,27 +76,6 @@ start:
 	@echo "$(GREEN)Lancement en mode production...$(NC)"
 	MODE_ENV=production npm start
 
-# Lancer uniquement la passerelle ONVIF-MQTT
-gateway:
-	@echo "$(GREEN)Lancement de la passerelle ONVIF-MQTT...$(NC)"
-	npm start
-
-# Lancer uniquement le client de test web
-test-client:
-	@echo "$(GREEN)Lancement du client de test web...$(NC)"
-	cd ./test-client && npm start
-
-# Lancer la passerelle ET le client de test web (en parallèle)
-all:
-	@echo "$(GREEN)Lancement de la passerelle et du client de test...$(NC)"
-	@echo "Arrêt des sessions tmux existantes..."
-	-tmux kill-session -t onvif_gateway 2>/dev/null || true
-	-tmux kill-session -t onvif_test_client 2>/dev/null || true
-	@echo "Lancement des nouvelles sessions..."
-	tmux new-session -d -s onvif_gateway 'cd . && npm start'
-	tmux new-session -d -s onvif_test_client 'cd ./test-client && npm start'
-	@echo "$(GREEN)Passerelle et client de test lancés dans deux sessions tmux : onvif_gateway et onvif_test_client$(NC)"
-	@echo "$(YELLOW)Utilisez 'tmux attach -t onvif_gateway' ou 'tmux attach -t onvif_test_client' pour voir les logs.$(NC)"
 
 # ========================
 # Nettoyage
@@ -108,7 +85,6 @@ all:
 clean:
 	@echo "$(GREEN)Nettoyage des fichiers temporaires...$(NC)"
 	rm -rf node_modules/
-	rm -rf test-client/node_modules/
 	rm -f npm-debug.log*
 	rm -f yarn-error.log*
 	rm -rf logs/*
@@ -143,13 +119,6 @@ docker-logs:
 # Vérification
 # ========================
 
-# Vérification de l'environnement
-check-env:
-	@echo "$(GREEN)Vérification de l'environnement...$(NC)"
-	@node --version || (echo "$(RED)Node.js n'est pas installé$(NC)" && exit 1)
-	@npm --version || (echo "$(RED)npm n'est pas installé$(NC)" && exit 1)
-	@echo "$(GREEN)Environnement OK !$(NC)"
-
 # ========================
 # Service systemd
 # ========================
@@ -182,6 +151,56 @@ service-stop:
 service-logs:
 	@echo "$(GREEN)Affichage des logs du service systemd onvif2mqtt...$(NC)"
 	sudo journalctl -u onvif2mqtt.service -f
+
+# ========================
+# Build et Publication
+# ========================
+
+# Build et publication Docker Hub avec incrémentation de version
+docker-build-and-publish: check-env
+	@echo "$(GREEN)🚀 Build et publication Docker Hub avec incrémentation de version...$(NC)"
+	./scripts/build-docker-image.sh
+
+# Incrémenter manuellement la version
+version-bump:
+	@echo "$(GREEN)📦 Incrémentation manuelle de la version...$(NC)"
+	@bash -c 'CURRENT_VERSION=$$(grep "\"version\"" package.json | sed "s/.*\"version\": \"\(.*\)\".*/\1/"); \
+	echo "Version actuelle: $$CURRENT_VERSION"; \
+	IFS="." read -r MAJOR MINOR PATCH <<< "$$CURRENT_VERSION"; \
+	PATCH=$$((PATCH + 1)); \
+	NEW_VERSION="$$MAJOR.$$MINOR.$$PATCH"; \
+	echo "Nouvelle version: $$NEW_VERSION"; \
+	jq ".version = \"$$NEW_VERSION\"" package.json > package.json.tmp && mv package.json.tmp package.json; \
+	echo "✅ Version mise à jour vers $$NEW_VERSION"'
+
+# Vérifier l'environnement et la configuration
+check-env:
+	@echo "$(GREEN)🔍 Vérification de l'environnement...$(NC)"
+	@command -v node >/dev/null 2>&1 || { echo "$(RED)❌ Node.js n'est pas installé$(NC)"; exit 1; }
+	@command -v npm >/dev/null 2>&1 || { echo "$(RED)❌ npm n'est pas installé$(NC)"; exit 1; }
+	@command -v git >/dev/null 2>&1 || { echo "$(RED)❌ Git n'est pas installé$(NC)"; exit 1; }
+	@command -v docker >/dev/null 2>&1 || { echo "$(RED)❌ Docker n'est pas installé$(NC)"; exit 1; }
+	@command -v jq >/dev/null 2>&1 || { echo "$(RED)❌ jq n'est pas installé (sudo apt install jq)$(NC)"; exit 1; }
+	@echo "$(GREEN)✅ Node.js: $$(node --version)$(NC)"
+	@echo "$(GREEN)✅ npm: $$(npm --version)$(NC)"
+	@echo "$(GREEN)✅ Git: $$(git --version | head -n1)$(NC)"
+	@echo "$(GREEN)✅ Docker: $$(docker --version)$(NC)"
+	@echo "$(GREEN)✅ jq: $$(jq --version)$(NC)"
+	@if [ ! -f "config.conf" ]; then \
+		echo "$(YELLOW)⚠️ Fichier config.conf manquant$(NC)"; \
+		echo "$(BLUE)💡 Créez le fichier: cp config.conf.example config.conf$(NC)"; \
+	else \
+		echo "$(GREEN)✅ Fichier config.conf présent$(NC)"; \
+	fi
+	@if [ ! -f "scripts/build-docker-image.sh" ] || [ ! -x "scripts/build-docker-image.sh" ]; then \
+		echo "$(RED)❌ Script build-docker-image.sh manquant ou non exécutable$(NC)"; \
+		exit 1; \
+	fi
+	@if [ ! -f "scripts/build-and-up.sh" ] || [ ! -x "scripts/build-and-up.sh" ]; then \
+		echo "$(RED)❌ Script build-and-up.sh manquant ou non exécutable$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)✅ Tous les prérequis sont satisfaits$(NC)"
 
 # Par défaut, afficher l'aide
 .DEFAULT_GOAL := help

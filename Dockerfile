@@ -1,9 +1,20 @@
 # Utiliser Node.js LTS comme image de base
 FROM node:18-alpine
 
-# Informations sur le mainteneur
+# Arguments de build pour les métadonnées
+ARG GIT_REF
+ARG BUILD_DATE
+ARG VERSION
+
+# Informations sur le mainteneur et métadonnées
 LABEL maintainer="onvif2mqtt"
 LABEL description="Gateway MQTT ↔ ONVIF pour contrôler les caméras ONVIF via MQTT"
+LABEL org.opencontainers.image.title="onvif2mqtt"
+LABEL org.opencontainers.image.description="Gateway MQTT ↔ ONVIF pour contrôler les caméras ONVIF via MQTT"
+LABEL org.opencontainers.image.version="${VERSION}"
+LABEL org.opencontainers.image.revision="${GIT_REF}"
+LABEL org.opencontainers.image.created="${BUILD_DATE}"
+LABEL org.opencontainers.image.source="https://github.com/Mamath2000/onvif2mqtt"
 
 # Installer les dépendances système nécessaires
 RUN apk add --no-cache \
@@ -39,6 +50,8 @@ USER onvif
 # Définir les variables d'environnement par défaut
 ENV NODE_ENV=production
 ENV TZ=Europe/Paris
+ENV GIT_REF=${GIT_REF}
+ENV BUILD_DATE=${BUILD_DATE}
 
 # Point d'entrée avec dumb-init pour une gestion propre des signaux
 ENTRYPOINT ["dumb-init", "--"]

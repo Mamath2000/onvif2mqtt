@@ -2,7 +2,12 @@ version: '3.8'
 
 services:
   onvif2mqtt:
-    build: .
+    build: 
+      context: .
+      args:
+        - GIT_REF=${GIT_REF:-unknown}
+        - BUILD_DATE=${BUILD_DATE:-unknown}
+        - VERSION=${VERSION:-1.0.0}
     container_name: onvif2mqtt
     restart: unless-stopped
     

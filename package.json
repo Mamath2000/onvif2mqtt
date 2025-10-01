@@ -1,6 +1,6 @@
 {
   "name": "onvif2mqtt",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Gateway MQTT ↔ ONVIF pour contrôler les caméras ONVIF via MQTT",
   "main": "src/app.js",
   "scripts": {
@@ -14,7 +14,12 @@
     "docker:compose": "docker-compose up -d",
     "docker:compose-logs": "docker-compose logs -f"
   },
-  "keywords": ["onvif", "mqtt", "gateway", "camera"],
+  "keywords": [
+    "onvif",
+    "mqtt",
+    "gateway",
+    "camera"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
