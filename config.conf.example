@@ -52,6 +52,24 @@ zoom_step = 0.15
 # Vitesse par défaut pour les commandes PTZ (valeurs entre 0.1 et 1.0)
 default_speed = 0.5
 
+[events]
+# Activer la surveillance des événements ONVIF (détection de mouvement, etc.)
+enabled = true
+# Intervalle de polling des événements (en millisecondes)
+pull_interval = 1000
+# Timeout pour le pull des messages (en millisecondes)
+pull_timeout = 60000
+# Liste des types d'événements à surveiller par défaut (séparés par des virgules)
+# Types disponibles: 
+#   - motion: Détection de mouvement standard
+#   - tamper: Sabotage/altération de la caméra
+#   - people: Détection de personne (IA TP-Link)
+#   - vehicle: Détection de véhicule (IA TP-Link)
+#   - pet: Détection d'animal/animal domestique (IA TP-Link)
+# Utilisez "all" ou laissez vide pour surveiller tous les types
+# Peut être surchargé au niveau de chaque caméra
+default_event_types = motion, tamper, people, vehicle, pet
+
 # Configuration des caméras
 # Format: [camera.nom_unique]
 # Remplacez "nom_unique" par un identifiant unique pour chaque caméra
@@ -62,6 +80,8 @@ host = 192.168.1.100
 port = 2020
 username = admin
 password = votre_mot_de_passe
+# Types d'événements pour cette caméra (optionnel, utilise default_event_types si non spécifié)
+event_types = motion, people, vehicle, pet
 
 [camera.exemple2]
 name = Caméra Jardin
@@ -69,6 +89,8 @@ host = 192.168.1.101
 port = 2020
 username = admin
 password = votre_mot_de_passe
+# Seulement détection de mouvement pour cette caméra
+event_types = motion
 
 # Ajoutez autant de caméras que nécessaire en suivant le même format
 # [camera.nom_unique]

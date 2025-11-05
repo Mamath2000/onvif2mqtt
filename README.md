@@ -11,6 +11,7 @@ Application Node.js pour contrôler des caméras ONVIF et les intégrer à Home 
 - 🔍 **Découverte automatique** : Recherche des caméras sur le réseau
 - 🌐 **Interface web** : Interface de contrôle simple
 - 🏠 **Home Assistant** : Découverte automatique des entités
+- 📡 **Événements ONVIF** : Détection de mouvement, sabotage, etc.
 
 ## Installation
 
@@ -137,6 +138,18 @@ move_step = 0.1
 zoom_step = 0.15
 default_speed = 0.5
 
+[events]
+# Activer la surveillance des événements ONVIF (détection de mouvement, etc.)
+enabled = true
+# Intervalle de polling des événements (en millisecondes)
+pull_interval = 1000
+# Timeout pour le pull des messages (en millisecondes)
+pull_timeout = 60000
+# Liste des types d'événements à surveiller (séparés par des virgules)
+# Types disponibles: motion, tamper, field_detection, line_crossing, digital_input, audio_detection, face_detection, people_counting
+# Utilisez "all" ou laissez vide pour surveiller tous les types
+event_types = motion, people, vehicle, pet
+
 # Configuration des caméras
 [camera.salon]
 name = Caméra Salon
@@ -144,6 +157,7 @@ host = 192.168.1.100
 port = 2020
 username = admin
 password = password123
+event_types = motion, tamper
 
 [camera.jardin]
 name = Caméra Jardin
@@ -151,6 +165,7 @@ host = 192.168.1.101
 port = 2020
 username = admin
 password = password456
+event_types = motion
 ```
 
 ### Configuration des caméras
@@ -283,6 +298,74 @@ En plus de l'intégration Home Assistant, l'application propose une structure MQ
 | `onvif2mqtt/{cam_id}/lwt` | État | Statut en ligne de la caméra | `online` / `offline` | `onvif2mqtt/camera_salon/lwt` |
 | `onvif2mqtt/{cam_id}/presetListId` | État | Liste des presets (nom/ID) | JSON object | `{"Cours":1,"Terrasse":2,"Potager":3}` |
 | `onvif2mqtt/{cam_id}/cmd` | Commande | Commandes PTZ unifiées | `move-left` / `move-right` / `move-up` / `move-down` / `zoom-in` / `zoom-out` | `onvif2mqtt/camera_salon/cmd` |
+| `onvif2mqtt/{cam_id}/goPreset` | Commande | Aller à un preset | ID du preset | `onvif2mqtt/camera_salon/goPreset` |
+| `onvif2mqtt/{cam_id}/event/{event_type}` | Événement | État d'un événement | `ON` / `OFF` | `onvif2mqtt/camera_salon/event/motion` |
+| `onvif2mqtt/{cam_id}/event/{event_type}/json` | Événement | Données complètes d'événement | JSON object | `onvif2mqtt/camera_salon/event/motion/json` |
+
+### Événements ONVIF supportés
+
+L'application surveille et publie les événements ONVIF configurés. Vous pouvez sélectionner les types d'événements à surveiller dans la configuration.
+
+#### Configuration des événements à surveiller
+
+Dans le fichier `config.conf`, section `[events]` :
+```ini
+[events]
+enabled = true
+pull_interval = 1000
+pull_timeout = 60000
+# Liste des types d'événements à surveiller (séparés par des virgules)
+event_types = motion, people, vehicle, pet
+```
+
+**Types d'événements disponibles :**
+
+**Événements standard :**
+- **motion** : Détection de mouvement (MotionAlarm, CellMotionDetector, MotionRegionDetector)
+- **tamper** : Détection de sabotage ou altération de la caméra
+- **field_detection** : Détection d'objets dans un champ défini
+- **line_crossing** : Franchissement d'une ligne virtuelle
+- **digital_input** : Changement d'état d'une entrée digitale
+- **audio_detection** : Détection de son/bruit
+- **face_detection** : Détection de visage
+- **people_counting** : Comptage de personnes
+
+**Événements IA (TP-Link TAPO C120, C540, etc.) :**
+- **people** : Détection de personne avec IA
+- **vehicle** : Détection de véhicule
+- **pet** : Détection d'animal/animal domestique
+
+**Options de configuration :**
+- Listez les types séparés par des virgules : `event_types = motion, people, vehicle`
+- Utilisez `all` pour tous les types : `event_types = all`
+- Laissez vide pour tous les types : `event_types = `
+
+**Note :** Seuls les événements supportés par vos caméras seront effectivement détectés. Les événements non supportés seront simplement ignorés.
+
+**Pour les caméras TP-Link :** Les événements IA (people, vehicle, pet) sont regroupés dans un événement générique `TPSmartEventDetector` qui est automatiquement décomposé en événements individuels.
+
+#### Format des événements publiés
+
+**Topic simple :**
+```
+onvif2mqtt/camera_salon/event/motion
+Payload: ON ou OFF
+```
+
+**Topic JSON (données complètes) :**
+```
+onvif2mqtt/camera_salon/event/motion/json
+Payload: {
+  "camera": "Caméra Salon",
+  "eventType": "motion",
+  "state": "ON",
+  "data": {
+    "State": "true",
+    "IsMotion": "true"
+  },
+  "timestamp": "2025-11-04T10:23:45.123Z"
+}
+```
 
 ### Configuration des amplitudes PTZ
 
@@ -307,6 +390,15 @@ mosquitto_sub -h localhost -t "onvif2mqtt/camera_salon/lwt"
 
 # Voir la liste des presets disponibles
 mosquitto_sub -h localhost -t "onvif2mqtt/camera_salon/presetListId"
+
+# Surveiller les événements de mouvement
+mosquitto_sub -h localhost -t "onvif2mqtt/camera_salon/event/motion"
+
+# Surveiller tous les événements d'une caméra (avec détails JSON)
+mosquitto_sub -h localhost -t "onvif2mqtt/camera_salon/event/+/json"
+
+# Surveiller tous les événements de toutes les caméras
+mosquitto_sub -h localhost -t "onvif2mqtt/+/event/#"
 
 # Contrôler le mouvement PTZ
 mosquitto_pub -h localhost -t "onvif2mqtt/camera_salon/cmd" -m "move-up"
@@ -335,16 +427,38 @@ def on_connect(client, userdata, flags, rc):
     # S'abonner aux statuts
     client.subscribe("onvif2mqtt/+/lwt")
     client.subscribe("onvif2mqtt/+/presetListId")
+    # S'abonner aux événements
+    client.subscribe("onvif2mqtt/+/event/+")
+    client.subscribe("onvif2mqtt/+/event/+/json")
 
 def on_message(client, userdata, message):
     topic_parts = message.topic.split('/')
     camera_id = topic_parts[1]
-    command = topic_parts[2]
-    payload = message.payload.decode()
     
-    if command == "lwt":
+    if len(topic_parts) >= 4 and topic_parts[2] == "event":
+        event_type = topic_parts[3]
+        payload = message.payload.decode()
+        
+        if len(topic_parts) == 5 and topic_parts[4] == "json":
+            # Message JSON avec détails complets
+            event_data = json.loads(payload)
+            print(f"Événement {event_type} pour {camera_id}:")
+            print(f"  État: {event_data['state']}")
+            print(f"  Timestamp: {event_data['timestamp']}")
+            print(f"  Données: {event_data['data']}")
+            
+            # Déclencher une action si mouvement détecté
+            if event_type == "motion" and event_data['state'] == "ON":
+                print(f"🚨 MOUVEMENT DÉTECTÉ sur {camera_id}!")
+                # Ajouter votre logique ici (notification, enregistrement, etc.)
+        else:
+            # Message simple ON/OFF
+            print(f"Événement {event_type} pour {camera_id}: {payload}")
+    
+    elif topic_parts[2] == "lwt":
+        payload = message.payload.decode()
         print(f"Caméra {camera_id} est {payload}")
-    elif command == "presetListId":
+    elif topic_parts[2] == "presetListId":
         presets = json.loads(payload)
         print(f"Presets disponibles pour {camera_id}:")
         for name, preset_id in presets.items():
@@ -507,6 +621,33 @@ automation:
       - service: switch.turn_on
         target:
           entity_id: switch.camera_salon_power
+
+# Exemple 4: Notification détection de mouvement ONVIF
+automation:
+  - alias: "Alerte mouvement détecté"
+    trigger:
+      - platform: mqtt
+        topic: "onvif2mqtt/camera_salon/event/motion"
+        payload: "ON"
+    action:
+      - service: notify.mobile_app
+        data:
+          message: "Mouvement détecté par la caméra Salon"
+          title: "🚨 Détection de mouvement"
+
+# Exemple 5: Enregistrement vidéo sur détection
+automation:
+  - alias: "Enregistrer sur mouvement"
+    trigger:
+      - platform: mqtt
+        topic: "onvif2mqtt/+/event/motion"
+        payload: "ON"
+    action:
+      - service: camera.record
+        data_template:
+          entity_id: "camera.{{ trigger.topic.split('/')[1] }}_stream"
+          filename: "/config/recordings/{{ now().strftime('%Y%m%d_%H%M%S') }}_{{ trigger.topic.split('/')[1] }}.mp4"
+          duration: 30
 ```
 
 #### Scripts pour contrôle PTZ

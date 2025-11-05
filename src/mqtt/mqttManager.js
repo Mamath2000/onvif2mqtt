@@ -134,6 +134,80 @@ class MqttManager {
         }
     }
 
+    /**
+     * Publier un événement de caméra (motion, tamper, etc.)
+     * @param {string} cameraName - Nom de la caméra
+     * @param {string} eventType - Type d'événement (motion, tamper, etc.)
+     * @param {object} eventData - Données de l'événement
+     */
+    publishCameraEvent(cameraName, eventType, eventData) {
+        const cameraId = cameraName.toLowerCase().replace(/\s+/g, '_');
+        
+        // Déterminer la valeur de l'événement (ON/OFF pour les binaires)
+        let eventValue = 'ON';
+
+        // Pour les événements de mouvement
+        if (eventType === 'motion' && eventData.IsMotion !== undefined) {
+            eventValue = eventData.IsMotion === 'true' || eventData.IsMotion === true ? 'ON' : 'OFF';
+        } else if (eventType === 'tamper' && eventData.IsTamper !== undefined) {
+            eventValue = eventData.IsTamper === 'true' || eventData.IsTamper === true ? 'ON' : 'OFF';
+        } else if (eventType === 'people' && eventData.IsPeople !== undefined) {
+            eventValue = eventData.IsPeople === 'true' || eventData.IsPeople === true ? 'ON' : 'OFF';
+        } else if (eventType === 'vehicle' && eventData.IsVehicle !== undefined) {
+            eventValue = eventData.IsVehicle === 'true' || eventData.IsVehicle === true ? 'ON' : 'OFF';
+        } else if (eventType === 'pet' && eventData.IsPet !== undefined) {
+            eventValue = eventData.IsPet === 'true' || eventData.IsPet === true ? 'ON' : 'OFF';
+        } else if (eventData.State !== undefined) {
+            eventValue = eventData.State === 'true' || eventData.State === true ? 'ON' : 'OFF';
+        }
+
+        // // Pour les événements de mouvement
+        // if (eventType === 'motion') {
+        //     if (eventData.State !== undefined) {
+        //         eventValue = eventData.State === 'true' || eventData.State === true ? 'ON' : 'OFF';
+        //     } else if (eventData.IsMotion !== undefined) {
+        //         eventValue = eventData.IsMotion === 'true' || eventData.IsMotion === true ? 'ON' : 'OFF';
+        //     }
+        // }
+        
+        // // Pour les événements IA (people, vehicle, pet) - déterminer l'état
+        // if (eventType === 'people' || eventType === 'vehicle' || eventType === 'pet') {
+        //     // Ces événements peuvent avoir State ou leur propre propriété (IsPeople, IsVehicle, IsPet)
+        //     if (eventData.State !== undefined) {
+        //         eventValue = eventData.State === 'true' || eventData.State === true ? 'ON' : 'OFF';
+        //     } else if (eventData.IsPeople !== undefined) {
+        //         eventValue = eventData.IsPeople === 'true' || eventData.IsPeople === true ? 'ON' : 'OFF';
+        //     } else if (eventData.IsVehicle !== undefined) {
+        //         eventValue = eventData.IsVehicle === 'true' || eventData.IsVehicle === true ? 'ON' : 'OFF';
+        //     } else if (eventData.IsPet !== undefined) {
+        //         eventValue = eventData.IsPet === 'true' || eventData.IsPet === true ? 'ON' : 'OFF';
+        //     }
+        // }
+        
+        // Publier l'état simple (ON/OFF)
+        this.publishRaw(
+            `${this.baseTopic}/${cameraId}/event/${eventType}`,
+            eventValue,
+            { retain: true, qos: 1 }
+        );
+        
+        // Publier les données complètes en JSON
+        this.publishRaw(
+            `${this.baseTopic}/${cameraId}/event/${eventType}/json`,
+            JSON.stringify({
+                camera: cameraName,
+                eventType: eventType,
+                state: eventValue,
+                data: eventData,
+                timestamp: new Date().toISOString()
+            }),
+            { retain: false, qos: 1 }
+        );
+        
+        logger.info(`📡 Événement ${eventType} publié pour ${cameraName}: ${eventValue}`);
+        
+    }
+
     // // Publier une image de caméra
     // publishCameraImage(camera, imageBuffer) {
     //     const cameraId = camera.name.toLowerCase().replace(/\s+/g, '_');

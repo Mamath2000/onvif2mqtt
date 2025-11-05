@@ -6,10 +6,17 @@ class OnvifManager {
         this.cameras = new Map();
         this.statusUpdateInterval = null;
         this.config = config;
+        this.eventCallbacks = new Map(); // Callbacks pour les événements
     }
 
     addCamera(config) {
         const camera = new OnvifCamera(config, this.config);
+        
+        // Configurer le callback pour les événements de cette caméra
+        camera.setEventCallback((cameraName, eventType, eventData) => {
+            this.handleCameraEvent(cameraName, eventType, eventData);
+        });
+        
         this.cameras.set(config.name, camera);
         logger.info(`Caméra ajoutée: ${config.name}`);
         return camera;
@@ -197,43 +204,6 @@ class OnvifManager {
         }
     }
 
-    // // Découverte automatique des caméras ONVIF
-    // async discoverCameras(timeout = 5000) {
-    //     try {
-    //         logger.info('Recherche de caméras ONVIF sur le réseau...');
-
-    //         const onvif = require('onvif');
-    //         const devices = await new Promise((resolve, reject) => {
-    //             const foundDevices = [];
-
-    //             onvif.Discovery.on('device', (cam, rinfo, xml) => {
-    //                 foundDevices.push({
-    //                     address: rinfo.address,
-    //                     port: 80,
-    //                     name: `Camera_${rinfo.address}`,
-    //                     xaddr: cam.xaddrs ? cam.xaddrs[0] : `http://${rinfo.address}/onvif/device_service`
-    //                 });
-    //             });
-
-    //             onvif.Discovery.on('error', (error) => {
-    //                 logger.warn('Erreur durant la découverte:', error);
-    //             });
-
-    //             onvif.Discovery.probe();
-
-    //             setTimeout(() => {
-    //                 resolve(foundDevices);
-    //             }, timeout);
-    //         });
-
-    //         logger.info(`${devices.length} caméras ONVIF découvertes`);
-    //         return devices;
-
-    //     } catch (error) {
-    //         logger.error('Erreur lors de la découverte des caméras:', error);
-    //         return [];
-    //     }
-    // }
 
     // Démarrer la surveillance périodique des statuts
     startStatusMonitoring(intervalMs = 30000, onStatusUpdate = null) {
@@ -283,6 +253,77 @@ class OnvifManager {
         });
         this.stopStatusMonitoring();
         logger.info('Toutes les caméras ont été déconnectées');
+    }
+
+    /**
+     * Enregistrer un callback pour un type d'événement spécifique
+     * @param {string} eventType - Type d'événement (motion, tamper, etc.)
+     * @param {function} callback - Fonction callback (cameraName, eventData)
+     */
+    onEvent(eventType, callback) {
+        if (!this.eventCallbacks.has(eventType)) {
+            this.eventCallbacks.set(eventType, []);
+        }
+        this.eventCallbacks.get(eventType).push(callback);
+        logger.debug(`Callback enregistré pour les événements de type: ${eventType}`);
+    }
+
+    /**
+     * Gérer un événement reçu d'une caméra
+     */
+    handleCameraEvent(cameraName, eventType, eventData) {
+        logger.info(`📡 Événement ${eventType} reçu de ${cameraName}:`, eventData);
+
+        // Appeler tous les callbacks enregistrés pour ce type d'événement
+        const callbacks = this.eventCallbacks.get(eventType) || [];
+        callbacks.forEach(callback => {
+            try {
+                callback(cameraName, eventData);
+            } catch (error) {
+                logger.error(`Erreur lors de l'appel du callback pour ${eventType}:`, error);
+            }
+        });
+
+        // Appeler également les callbacks génériques (tous événements)
+        const allCallbacks = this.eventCallbacks.get('*') || [];
+        allCallbacks.forEach(callback => {
+            try {
+                callback(cameraName, eventType, eventData);
+            } catch (error) {
+                logger.error(`Erreur lors de l'appel du callback générique:`, error);
+            }
+        });
+    }
+
+    /**
+     * Souscrire aux événements pour toutes les caméras connectées
+     */
+    async subscribeAllToEvents() {
+        const subscriptionPromises = Array.from(this.cameras.values()).map(async camera => {
+            if (camera.isConnected) {
+                return await camera.subscribeToEvents();
+            }
+            return false;
+        });
+
+        const results = await Promise.allSettled(subscriptionPromises);
+        
+        const successCount = results.filter(r => r.status === 'fulfilled' && r.value === true).length;
+        logger.info(`✅ ${successCount}/${this.cameras.size} caméra(s) abonnée(s) aux événements`);
+        
+        return results;
+    }
+
+    /**
+     * Se désabonner des événements pour toutes les caméras
+     */
+    async unsubscribeAllFromEvents() {
+        const unsubscriptionPromises = Array.from(this.cameras.values()).map(async camera => {
+            return await camera.unsubscribeFromEvents();
+        });
+
+        await Promise.allSettled(unsubscriptionPromises);
+        logger.info('Toutes les caméras ont été désabonnées des événements');
     }
 }
 

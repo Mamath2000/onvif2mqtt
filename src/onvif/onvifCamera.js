@@ -1,5 +1,6 @@
 const onvif = require('onvif');
 const logger = require('../utils/logger');
+const OnvifEventSubscriber = require('./onvifEventSubscriber');
 
 class OnvifCamera {
     constructor(config, globalConfig = null) {
@@ -15,6 +16,8 @@ class OnvifCamera {
         this.presets = {};
         this.isConnecting = false; // Ajout d'un état de connexion en cours
         this.globalConfig = globalConfig; // Configuration globale
+        this.eventSubscriber = null; // Gestionnaire d'événements
+        this.eventCallback = null; // Callback pour les événements
     }
 
     async connect() {
@@ -62,6 +65,13 @@ class OnvifCamera {
             await this.refreshCapabilities();
 
             logger.info(`Caméra connectée: ${this.name}`);
+            
+            // Souscrire aux événements si activé dans la configuration
+            const eventsEnabled = this.globalConfig ? this.globalConfig.get('events.enabled', true) : true;
+            if (eventsEnabled) {
+                await this.subscribeToEvents();
+            }
+            
             return true;
             
         } catch (error) {
@@ -486,8 +496,67 @@ class OnvifCamera {
     }
 
     disconnect() {
+        // Se désabonner des événements avant de se déconnecter
+        if (this.eventSubscriber) {
+            this.eventSubscriber.unsubscribe();
+            this.eventSubscriber = null;
+        }
+        
         this.isConnected = false;
         logger.info(`Caméra déconnectée: ${this.name}`);
+    }
+
+    /**
+     * Configurer le callback pour les événements
+     */
+    setEventCallback(callback) {
+        this.eventCallback = callback;
+    }
+
+    /**
+     * S'abonner aux événements ONVIF de la caméra
+     */
+    async subscribeToEvents() {
+        if (this.eventSubscriber && this.eventSubscriber.isActive()) {
+            logger.debug(`Abonnement aux événements déjà actif pour ${this.name}`);
+            return true;
+        }
+
+        try {
+            logger.info(`Souscription aux événements ONVIF pour ${this.name}`);
+            
+            this.eventSubscriber = new OnvifEventSubscriber(this, (cameraName, eventType, eventData) => {
+                // Transférer l'événement au callback s'il est défini
+                if (this.eventCallback) {
+                    this.eventCallback(cameraName, eventType, eventData);
+                }
+            });
+
+            const success = await this.eventSubscriber.subscribe();
+            
+            if (success) {
+                logger.info(`✅ Abonnement aux événements réussi pour ${this.name}`);
+            } else {
+                logger.warn(`⚠️  Échec de l'abonnement aux événements pour ${this.name}`);
+            }
+            
+            return success;
+
+        } catch (error) {
+            logger.error(`Erreur lors de l'abonnement aux événements pour ${this.name}:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Se désabonner des événements ONVIF
+     */
+    async unsubscribeFromEvents() {
+        if (this.eventSubscriber) {
+            await this.eventSubscriber.unsubscribe();
+            this.eventSubscriber = null;
+            logger.info(`Désabonnement des événements pour ${this.name}`);
+        }
     }
 
     // ✅ Amélioration : vérification de santé de la connexion
