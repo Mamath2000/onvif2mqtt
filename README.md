@@ -141,10 +141,6 @@ default_speed = 0.5
 [events]
 # Activer la surveillance des événements ONVIF (détection de mouvement, etc.)
 enabled = true
-# Intervalle de polling des événements (en millisecondes)
-pull_interval = 1000
-# Timeout pour le pull des messages (en millisecondes)
-pull_timeout = 60000
 # Liste des types d'événements à surveiller (séparés par des virgules)
 # Types disponibles: motion, tamper, field_detection, line_crossing, digital_input, audio_detection, face_detection, people_counting
 # Utilisez "all" ou laissez vide pour surveiller tous les types
@@ -312,8 +308,6 @@ Dans le fichier `config.conf`, section `[events]` :
 ```ini
 [events]
 enabled = true
-pull_interval = 1000
-pull_timeout = 60000
 # Liste des types d'événements à surveiller (séparés par des virgules)
 event_types = motion, people, vehicle, pet
 ```

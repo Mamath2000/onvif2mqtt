@@ -3,19 +3,11 @@ const { v4: uuidv4 } = require('uuid');
 const logger = require('../utils/logger');
 
 class MqttManager {
-    constructor(config, onvifManager = null) {
+    constructor(config) {
         this.config = config;
         this.client = null;
         this.isConnected = false;
         this.baseTopic = config.baseTopic || 'onvif2mqtt';
-        this.onvifManager = onvifManager; // Référence au gestionnaire ONVIF
-        this.deviceConfig = {
-            identifiers: [config.deviceId],
-            name: config.deviceName,
-            model: "ONVIF MQTT Controller",
-            manufacturer: "Custom",
-            sw_version: "1.0.0"
-        };
     }
 
     async connect() {
@@ -116,9 +108,9 @@ class MqttManager {
         );
         if (camera.isConnected) {
 
-            // Capabilities - PTZ
+            // PTZ
             this.publishRaw(
-                `${this.baseTopic}/${cameraId}/capabilities/ptz`,
+                `${this.baseTopic}/${cameraId}/ptz`,
                 (camera.hasPTZ ? 'true' : 'false'),
                 { retain: true }
             );
@@ -288,11 +280,14 @@ class MqttManager {
             logger.info('Déconnecté du broker MQTT');
         }
     }
-
     publishRaw(topic, payload, options = {}) {
         if (this.client && this.isConnected) {
-            this.client.publish(topic, payload, options);
-            logger.debug(`Message brut publié - Topic: ${topic}`);
+            try {
+                this.client.publish(topic, payload, options);
+                logger.debug(`Message brut publié - Topic: ${topic}`);
+            } catch (error) {
+                logger.warn(`Erreur lors de la publication sur ${topic}: ${error.message}`);
+            }
         } else {
             logger.warn(`Impossible de publier sur ${topic} - MQTT non connecté`);
         }

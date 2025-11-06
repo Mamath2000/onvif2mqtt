@@ -73,11 +73,6 @@ Dans `config.conf` :
 # Activer/désactiver la surveillance des événements
 enabled = true
 
-# Intervalle de polling (ms) - temps entre chaque vérification
-pull_interval = 1000
-
-# Timeout pour le pull (ms) - durée max d'attente de nouveaux événements
-pull_timeout = 60000
 ```
 
 ### Paramètres recommandés
@@ -85,8 +80,7 @@ pull_timeout = 60000
 | Paramètre | Valeur par défaut | Recommandation |
 |-----------|-------------------|----------------|
 | `enabled` | `true` | `true` pour activer |
-| `pull_interval` | `1000` ms | 500-2000 ms selon la charge |
-| `pull_timeout` | `60000` ms | 30000-120000 ms |
+
 
 **Note :** Un `pull_interval` trop faible peut surcharger le réseau et la caméra. Un timeout trop élevé peut ralentir la détection de reconnexion.
 

@@ -32,6 +32,20 @@ reconnect_delay = 5000
 # Timeout pour les connexions ONVIF (en millisecondes)
 onvif_timeout = 10000
 
+# Paramètres avancés de reconnexion (optionnels)
+# Si définis, ils remplacent les paramètres legacy ci-dessus
+# Backoff exponentiel avec jitter (pleine gigue)
+# Délai de base du backoff (ms)
+reconnect.base_delay_ms = 1000
+# Délai maximum entre deux tentatives (ms)
+reconnect.max_delay_ms = 30000
+# Multiplicateur d'exponentiation (>= 1.0)
+reconnect.multiplier = 2.0
+# Nombre max de tentatives (0 = illimité)
+reconnect.max_retries = 0
+# Type de jitter: full | none
+reconnect.jitter = full
+
 [logging]
 # Niveau de log (error, warn, info, debug)
 level = info
@@ -55,10 +69,6 @@ default_speed = 0.5
 [events]
 # Activer la surveillance des événements ONVIF (détection de mouvement, etc.)
 enabled = true
-# Intervalle de polling des événements (en millisecondes)
-pull_interval = 1000
-# Timeout pour le pull des messages (en millisecondes)
-pull_timeout = 60000
 # Liste des types d'événements à surveiller par défaut (séparés par des virgules)
 # Types disponibles: 
 #   - motion: Détection de mouvement standard

@@ -12,7 +12,7 @@ class OnvifCamera {
         this.device = null;
         this.isConnected = false;
         this.profiles = [];
-        this.capabilities = null;
+        this.hasPTZ = false;
         this.presets = {};
         this.isConnecting = false; // Ajout d'un état de connexion en cours
         this.globalConfig = globalConfig; // Configuration globale
@@ -90,7 +90,7 @@ class OnvifCamera {
 
     async refreshCapabilities() {
         try {
-            await this.fetchCapabilities();
+            await this.fetchPtzCapabilities();
             await this.fetchProfiles();
             await this.fetchPtzPresets();
 
@@ -137,29 +137,24 @@ class OnvifCamera {
         }
     }
 
-    async fetchCapabilities() {
+    async fetchPtzCapabilities() {
         try {
             const capabilities = await new Promise((resolve, reject) => {
                 this.device.getCapabilities((err, result) => {
-                    if (err) {
-                        reject(err);
-                    } else {
-                        resolve(result);
-                    }
+                    if (err) reject(err);
+                    else resolve(result);
                 });
             });
-            this.capabilities = capabilities;
 
-            // Détecter les capacités PTZ
-            this.hasPTZ = !!(capabilities &&
-                capabilities.PTZ &&
-                (capabilities.PTZ.XAddr || capabilities.PTZ.XAddrs));
+            // On ne s'intéresse qu'à PTZ
+            this.capabilities = { PTZ: capabilities?.PTZ };
+            // Définir hasPTZ dynamiquement
+            this.hasPTZ = !!(capabilities?.PTZ && (capabilities.PTZ.XAddr || capabilities.PTZ.XAddrs));
 
-            logger.debug(`Capacités de la caméra ${this.name}:`, Object.keys(capabilities));
             logger.info(`PTZ disponible pour ${this.name}: ${this.hasPTZ}`);
-            return capabilities;
+            return this.hasPTZ;
         } catch (error) {
-            logger.error(`Erreur lors de la récupération des capacités de ${this.name}:`, error);
+            logger.error(`Erreur lors de la récupération des capacités PTZ de ${this.name}:`, error);
             return null;
         }
     }
@@ -291,7 +286,7 @@ class OnvifCamera {
     async fetchPtzPresets(profileIndex = 0) {
         try {
             // Vérifier si la caméra supporte PTZ
-            if (!this.capabilities || !this.capabilities.PTZ) {
+            if (!this.hasPTZ) {
                 logger.debug(`Caméra ${this.name} ne supporte pas PTZ`);
                 this.presets = {};
                 return {};
@@ -385,33 +380,29 @@ class OnvifCamera {
     async gotoPreset(presetToken, profileIndex = 0) {
         try {
             // Vérifier si la caméra supporte PTZ
-            if (!this.capabilities || !this.capabilities.PTZ) {
+            if (!this.hasPTZ) {
                 throw new Error('PTZ non supporté par cette caméra');
             }
 
-            try {
-                await new Promise((resolve, reject) => {
-                    if (typeof this.device.gotoPreset === 'function') {
-                        this.device.gotoPreset({
-                            preset: presetToken
-                        }, (err) => {
-                            if (err) {
-                                reject(err);
-                            } else {
-                                resolve();
-                            }
-                        });
-                    } else {
-                        reject(new Error('gotoPreset non disponible'));
-                    }
-                });
-            } catch (error1) {
-                logger.debug(`Méthode gotoPreset échouée pour ${this.name}:`, error1.message);
-                return false;
-            }
+            await new Promise((resolve, reject) => {
+                if (typeof this.device.gotoPreset === 'function') {
+                    this.device.gotoPreset({
+                        preset: presetToken
+                    }, (err) => {
+                        if (err) {
+                            reject(err);
+                        } else {
+                            resolve();
+                        }
+                    });
+                } else {
+                    reject(new Error('gotoPreset non disponible'));
+                }
+            });
 
             logger.debug(`Preset ${presetToken} activé pour ${this.name}`);
             return true;
+
         } catch (error) {
             logger.error(`Erreur lors de l'activation du preset pour ${this.name}:`, error);
             return false;
@@ -437,7 +428,7 @@ class OnvifCamera {
             power: this.isConnected,
             status: this.isConnected ? 'online' : 'offline',
             profiles: this.profiles.length,
-            hasPTZ: this.capabilities && this.capabilities.PTZ ? true : false,
+            hasPTZ: this.hasPTZ,
             deviceInfo: this.deviceInfo,
             presets: this.presets,
             eventTypes: eventTypesArray,
