@@ -35,14 +35,14 @@ class OnvifCamera {
         }
 
         this.isConnecting = true;
-        
+
         try {
             logger.info(`Connexion à la caméra ONVIF: ${this.name} (${this.host}:${this.port})`);
-            
+
             // Nettoyer l'état précédent
             this.isConnected = false;
             this.device = null;
-            
+
             const timeout = this.globalConfig ? this.globalConfig.get('network.onvif_timeout', 10000) : 10000;
 
             // Créer le device ONVIF
@@ -61,7 +61,7 @@ class OnvifCamera {
                     else resolve();
                 });
             });
-            
+
             this.isConnected = true;
 
             // ✅ CORRECTION : Appeler fetchDeviceDetail au lieu de getDeviceInformation
@@ -69,15 +69,15 @@ class OnvifCamera {
             await this.refreshCapabilities();
 
             logger.info(`Caméra connectée: ${this.name}`);
-            
+
             // Souscrire aux événements si activé dans la configuration
             const eventsEnabled = this.globalConfig ? this.globalConfig.get('events.enabled', true) : true;
             if (eventsEnabled) {
                 await this.subscribeToEvents();
             }
-            
+
             return true;
-            
+
         } catch (error) {
             logger.error(`Erreur lors de la connexion à la caméra ${this.name}:`, error);
             this.isConnected = false;
@@ -149,12 +149,12 @@ class OnvifCamera {
                 });
             });
             this.capabilities = capabilities;
-            
+
             // Détecter les capacités PTZ
-            this.hasPTZ = !!(capabilities && 
-                            capabilities.PTZ && 
-                            (capabilities.PTZ.XAddr || capabilities.PTZ.XAddrs));
-            
+            this.hasPTZ = !!(capabilities &&
+                capabilities.PTZ &&
+                (capabilities.PTZ.XAddr || capabilities.PTZ.XAddrs));
+
             logger.debug(`Capacités de la caméra ${this.name}:`, Object.keys(capabilities));
             logger.info(`PTZ disponible pour ${this.name}: ${this.hasPTZ}`);
             return capabilities;
@@ -221,7 +221,7 @@ class OnvifCamera {
             }
 
             const profile = this.profiles[profileIndex];
-            
+
             // ✅ Vérifier que le profil a un token
             if (!profile) {
                 logger.error(`Profil invalide ou sans token pour ${this.name}`);
@@ -317,7 +317,7 @@ class OnvifCamera {
                 });
             } catch (error1) {
                 logger.debug(`Méthode getPresets échouée pour ${this.name}:`, error1.message);
-                
+
                 try {
                     // Méthode 2: ptzGetPresets
                     presets = await new Promise((resolve, reject) => {
@@ -335,7 +335,7 @@ class OnvifCamera {
                     });
                 } catch (error2) {
                     logger.debug(`Méthode ptzGetPresets échouée pour ${this.name}:`, error2.message);
-                    
+
                     logger.error(`Erreur lors de la récupération des presets pour ${this.name}:`, error);
                     this.presets = {};
                     return {};
@@ -346,7 +346,7 @@ class OnvifCamera {
             this.presets = this.normalizePresets(presets);
             logger.debug(`${Object.keys(this.presets).length} presets trouvés pour ${this.name}`);
             return this.presets || {};
-            
+
         } catch (error) {
             logger.error(`Erreur lors de la récupération des presets pour ${this.name}:`, error);
             this.presets = {};
@@ -371,7 +371,7 @@ class OnvifCamera {
                 // Structure: { "$": { "token": 1 }, "name": "Point de vue 1", ... }
                 const token = preset.$?.token || preset.token || key;
                 const name = preset.name || preset.Name || `Preset ${token}`;
-                
+
                 // Format simple: { "1": "Point de vue 1" }
                 normalized[token] = name;
             } catch (error) {
@@ -409,7 +409,7 @@ class OnvifCamera {
                 logger.debug(`Méthode gotoPreset échouée pour ${this.name}:`, error1.message);
                 return false;
             }
-            
+
             logger.debug(`Preset ${presetToken} activé pour ${this.name}`);
             return true;
         } catch (error) {
@@ -453,7 +453,7 @@ class OnvifCamera {
             this.eventSubscriber.unsubscribe();
             this.eventSubscriber = null;
         }
-        
+
         this.isConnected = false;
         logger.info(`Caméra déconnectée: ${this.name}`);
     }
@@ -476,7 +476,7 @@ class OnvifCamera {
 
         try {
             logger.info(`Souscription aux événements ONVIF pour ${this.name}`);
-            
+
             this.eventSubscriber = new OnvifEventSubscriber(this, (cameraName, eventType, eventData) => {
                 // Transférer l'événement au callback s'il est défini
                 if (this.eventCallback) {
@@ -485,13 +485,13 @@ class OnvifCamera {
             });
 
             const success = await this.eventSubscriber.subscribe();
-            
+
             if (success) {
                 logger.info(`✅ Abonnement aux événements réussi pour ${this.name}`);
             } else {
                 logger.warn(`⚠️  Échec de l'abonnement aux événements pour ${this.name}`);
             }
-            
+
             return success;
 
         } catch (error) {
