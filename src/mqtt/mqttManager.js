@@ -3,11 +3,12 @@ const { v4: uuidv4 } = require('uuid');
 const logger = require('../utils/logger');
 
 class MqttManager {
-    constructor(config) {
+    constructor(config, onvifManager = null) {
         this.config = config;
         this.client = null;
         this.isConnected = false;
         this.baseTopic = config.baseTopic || 'onvif2mqtt';
+        this.onvifManager = onvifManager; // Référence au gestionnaire ONVIF
         this.deviceConfig = {
             identifiers: [config.deviceId],
             name: config.deviceName,
@@ -149,42 +150,24 @@ class MqttManager {
         // Pour les événements de mouvement
         if (eventType === 'motion' && eventData.IsMotion !== undefined) {
             eventValue = eventData.IsMotion === 'true' || eventData.IsMotion === true ? 'ON' : 'OFF';
+
         } else if (eventType === 'tamper' && eventData.IsTamper !== undefined) {
             eventValue = eventData.IsTamper === 'true' || eventData.IsTamper === true ? 'ON' : 'OFF';
+
         } else if (eventType === 'people' && eventData.IsPeople !== undefined) {
             eventValue = eventData.IsPeople === 'true' || eventData.IsPeople === true ? 'ON' : 'OFF';
+
         } else if (eventType === 'vehicle' && eventData.IsVehicle !== undefined) {
             eventValue = eventData.IsVehicle === 'true' || eventData.IsVehicle === true ? 'ON' : 'OFF';
+
         } else if (eventType === 'pet' && eventData.IsPet !== undefined) {
             eventValue = eventData.IsPet === 'true' || eventData.IsPet === true ? 'ON' : 'OFF';
+
         } else if (eventData.State !== undefined) {
             eventValue = eventData.State === 'true' || eventData.State === true ? 'ON' : 'OFF';
         }
 
-        // // Pour les événements de mouvement
-        // if (eventType === 'motion') {
-        //     if (eventData.State !== undefined) {
-        //         eventValue = eventData.State === 'true' || eventData.State === true ? 'ON' : 'OFF';
-        //     } else if (eventData.IsMotion !== undefined) {
-        //         eventValue = eventData.IsMotion === 'true' || eventData.IsMotion === true ? 'ON' : 'OFF';
-        //     }
-        // }
-        
-        // // Pour les événements IA (people, vehicle, pet) - déterminer l'état
-        // if (eventType === 'people' || eventType === 'vehicle' || eventType === 'pet') {
-        //     // Ces événements peuvent avoir State ou leur propre propriété (IsPeople, IsVehicle, IsPet)
-        //     if (eventData.State !== undefined) {
-        //         eventValue = eventData.State === 'true' || eventData.State === true ? 'ON' : 'OFF';
-        //     } else if (eventData.IsPeople !== undefined) {
-        //         eventValue = eventData.IsPeople === 'true' || eventData.IsPeople === true ? 'ON' : 'OFF';
-        //     } else if (eventData.IsVehicle !== undefined) {
-        //         eventValue = eventData.IsVehicle === 'true' || eventData.IsVehicle === true ? 'ON' : 'OFF';
-        //     } else if (eventData.IsPet !== undefined) {
-        //         eventValue = eventData.IsPet === 'true' || eventData.IsPet === true ? 'ON' : 'OFF';
-        //     }
-        // }
-        
-        // Publier l'état simple (ON/OFF)
+            // Publier l'état simple (ON/OFF)
         this.publishRaw(
             `${this.baseTopic}/${cameraId}/event/${eventType}`,
             eventValue,

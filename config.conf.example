@@ -82,6 +82,12 @@ username = admin
 password = votre_mot_de_passe
 # Types d'événements pour cette caméra (optionnel, utilise default_event_types si non spécifié)
 event_types = motion, people, vehicle, pet
+# Mode Pan (mouvement horizontal) : hide, normal, inverted (défaut: normal)
+pan_mode = normal
+# Mode Tilt (mouvement vertical) : hide, normal, inverted (défaut: normal)
+tilt_mode = normal
+# Mode Zoom : hide, normal (défaut: normal)
+zoom_mode = normal
 
 [camera.exemple2]
 name = Caméra Jardin
@@ -91,6 +97,8 @@ username = admin
 password = votre_mot_de_passe
 # Seulement détection de mouvement pour cette caméra
 event_types = motion
+# Exemple : inverser le tilt car la caméra est montée à l'envers
+tilt_mode = inverted
 
 # Ajoutez autant de caméras que nécessaire en suivant le même format
 # [camera.nom_unique]

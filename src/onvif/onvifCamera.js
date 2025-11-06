@@ -18,6 +18,10 @@ class OnvifCamera {
         this.globalConfig = globalConfig; // Configuration globale
         this.eventSubscriber = null; // Gestionnaire d'événements
         this.eventCallback = null; // Callback pour les événements
+        this.eventTypes = config.event_types || null; // Types d'événements configurés pour cette caméra
+        this.panMode = config.pan_mode || 'normal'; // Mode pan (hide, normal, inverted)
+        this.tiltMode = config.tilt_mode || 'normal'; // Mode tilt (hide, normal, inverted)
+        this.zoomMode = config.zoom_mode || 'normal'; // Mode zoom (hide, normal)
     }
 
     async connect() {
@@ -160,105 +164,33 @@ class OnvifCamera {
         }
     }
 
-    // async getStreamUri(profileIndex = 0) {
-    //     try {
-    //         if (this.profiles.length === 0) {
-    //             throw new Error('Aucun profil disponible');
-    //         }
-
-    //         const profile = this.profiles[profileIndex];
-    //         const streamUri = await new Promise((resolve, reject) => {
-    //             this.device.getStreamUri({
-    //                 protocol: 'RTSP',
-    //                 profileToken: profileIndex
-    //             }, (err, result) => {
-    //                 if (err) {
-    //                     reject(err);
-    //                 } else {
-    //                     resolve(result);
-    //                 }
-    //             });
-    //         });
-
-    //         logger.debug(`URI de stream pour ${this.name}:`, streamUri.uri);
-    //         return streamUri.uri;
-    //     } catch (error) {
-    //         logger.error(`Erreur lors de la récupération de l'URI de stream pour ${this.name}:`, error);
-    //         return null;
-    //     }
-    // }
-
-    // async getSnapshot(profileIndex = 0) {
-    //     try {
-    //         if (this.profiles.length === 0) {
-    //             throw new Error('Aucun profil disponible');
-    //         }
-
-    //         const profile = this.profiles[profileIndex];
-    //         const snapshotUri = await new Promise((resolve, reject) => {
-    //             this.device.getSnapshotUri({
-    //                 profileToken: profileIndex
-    //             }, (err, result) => {
-    //                 if (err) {
-    //                     reject(err);
-    //                 } else {
-    //                     resolve(result);
-    //                 }
-    //             });
-    //         });
-
-    //         logger.debug(`URI de snapshot pour ${this.name}:`, snapshotUri.uri);
-            
-    //         // Télécharger l'image en utilisant fetch ou http
-    //         const https = require('https');
-    //         const http = require('http');
-    //         const url = require('url');
-            
-    //         return new Promise((resolve, reject) => {
-    //             const parsedUrl = url.parse(snapshotUri.uri);
-    //             const client = parsedUrl.protocol === 'https:' ? https : http;
-                
-    //             const request = client.get(snapshotUri.uri, (response) => {
-    //                 if (response.statusCode !== 200) {
-    //                     reject(new Error(`Erreur HTTP: ${response.statusCode}`));
-    //                     return;
-    //                 }
-                    
-    //                 const chunks = [];
-    //                 response.on('data', (chunk) => chunks.push(chunk));
-    //                 response.on('end', () => {
-    //                     const imageBuffer = Buffer.concat(chunks);
-    //                     resolve(imageBuffer);
-    //                 });
-    //             });
-                
-    //             request.on('error', reject);
-    //         });
-    //     } catch (error) {
-    //         logger.error(`Erreur lors de la capture d'image pour ${this.name}:`, error);
-    //         return null;
-    //     }
-    // }
-
     // Fonctions PTZ (Pan-Tilt-Zoom)
     async moveUp(speed = 0.5) {
         const moveStep = (this.globalConfig ? this.globalConfig.get('ptz.move_step', 0.1) : 0.1) * 1.5;
-        return this.ptzMove({ y: moveStep });
+        // Inverser si tilt_mode est "inverted"
+        const direction = this.tiltMode === 'inverted' ? -moveStep : moveStep;
+        return this.ptzMove({ y: direction });
     }
 
     async moveDown(speed = 0.5) {
         const moveStep = (this.globalConfig ? this.globalConfig.get('ptz.move_step', 0.1) : 0.1) * 1.5;
-        return this.ptzMove({ y: -moveStep });
+        // Inverser si tilt_mode est "inverted"
+        const direction = this.tiltMode === 'inverted' ? moveStep : -moveStep;
+        return this.ptzMove({ y: direction });
     }
 
     async moveLeft(speed = 0.5) {
         const moveStep = this.globalConfig ? this.globalConfig.get('ptz.move_step', 0.1) : 0.1;
-        return this.ptzMove({ x: -moveStep });
+        // Inverser si pan_mode est "inverted"
+        const direction = this.panMode === 'inverted' ? moveStep : -moveStep;
+        return this.ptzMove({ x: direction });
     }
 
     async moveRight(speed = 0.5) {
         const moveStep = this.globalConfig ? this.globalConfig.get('ptz.move_step', 0.1) : 0.1;
-        return this.ptzMove({ x: moveStep });
+        // Inverser si pan_mode est "inverted"
+        const direction = this.panMode === 'inverted' ? -moveStep : moveStep;
+        return this.ptzMove({ x: direction });
     }
 
     async zoomIn(speed = 0.5) {
@@ -510,6 +442,16 @@ class OnvifCamera {
     }
 
     getStatus() {
+        // Parser les event_types en tableau si c'est une string
+        let eventTypesArray = [];
+        if (this.eventTypes) {
+            if (typeof this.eventTypes === 'string') {
+                eventTypesArray = this.eventTypes.split(',').map(type => type.trim()).filter(type => type.length > 0);
+            } else if (Array.isArray(this.eventTypes)) {
+                eventTypesArray = this.eventTypes;
+            }
+        }
+
         return {
             name: this.name,
             host: this.host,
@@ -520,7 +462,11 @@ class OnvifCamera {
             profiles: this.profiles.length,
             hasPTZ: this.capabilities && this.capabilities.PTZ ? true : false,
             deviceInfo: this.deviceInfo,
-            presets: this.presets
+            presets: this.presets,
+            eventTypes: eventTypesArray,
+            panMode: this.panMode,
+            tiltMode: this.tiltMode,
+            zoomMode: this.zoomMode
         };
     }
 

@@ -41,8 +41,8 @@ class OnvifMqttGateway {
             logger.info(`📡 Topic de base: ${mqttConfig.baseTopic}`);
 
             // Initialiser les gestionnaires
-            this.mqttManager = new MqttManager(mqttConfig);
             this.onvifManager = new OnvifManager(this.config);
+            this.mqttManager = new MqttManager(mqttConfig, this.onvifManager);
 
             // Configurer les événements MQTT
             // this.mqttManager.on('cameraCommand', this.handleMqttCommand.bind(this));
@@ -105,6 +105,10 @@ class OnvifMqttGateway {
             const port = cameraConfig.port;
             const username = cameraConfig.username;
             const password = cameraConfig.password;
+            const event_types = cameraConfig.event_types; // Récupérer les types d'événements
+            const pan_mode = cameraConfig.pan_mode || 'normal'; // Mode pan (hide, normal, inverted)
+            const tilt_mode = cameraConfig.tilt_mode || 'normal'; // Mode tilt (hide, normal, inverted)
+            const zoom_mode = cameraConfig.zoom_mode || 'normal'; // Mode zoom (hide, normal)
 
             if (name && host && username && password) {
                 cameras.push({
@@ -112,7 +116,11 @@ class OnvifMqttGateway {
                     host,
                     port: parseInt(port) || 80,
                     username,
-                    password
+                    password,
+                    event_types: event_types || null, // Ajouter les types d'événements
+                    pan_mode: pan_mode,
+                    tilt_mode: tilt_mode,
+                    zoom_mode: zoom_mode
                 });
                 logger.info(`📹 Caméra trouvée: ${name} (${host}:${port || 80})`);
             } else {
