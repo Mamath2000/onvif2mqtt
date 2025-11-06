@@ -13,6 +13,14 @@ class OnvifEventSubscriber {
         this.isSubscribed = false;
         this.pullTimeout = 60000; // 60 secondes
         this.pullIntervalMs = 1000; // 1 seconde
+        // Watchdog: resubscribe si aucun event pendant X temps
+        this.watchdogInterval = null;
+        this.lastEventAt = null;
+        this.isResubscribing = false;
+        // Configurable via camera.globalConfig
+        const cfg = camera && camera.globalConfig;
+        this.watchdogCheckMs = cfg ? cfg.get('events.watchdog.check_interval_ms', 30000) : 30000;
+        this.noEventTimeoutMs = cfg ? cfg.get('events.watchdog.no_event_timeout_ms', 120000) : 120000;
     }
 
     /**
@@ -57,6 +65,10 @@ class OnvifEventSubscriber {
                 });
 
                 logger.info(`📡 Écoute des événements activée pour ${self.camera.name}`);
+
+                // Initialiser le watchdog
+                self.lastEventAt = Date.now();
+                self.startWatchdog();
             });
 
             return true;
@@ -79,6 +91,9 @@ class OnvifEventSubscriber {
             if (!camMessage || !camMessage.topic || !camMessage.message) {
                 return;
             }
+
+            // Marquer la réception pour le watchdog
+            this.lastEventAt = Date.now();
 
             const topic = camMessage.topic;
             const message = camMessage.message;
@@ -248,6 +263,7 @@ class OnvifEventSubscriber {
         }
 
         this.isSubscribed = false;
+        this.stopWatchdog();
     }
 
     /**
@@ -255,6 +271,54 @@ class OnvifEventSubscriber {
      */
     isActive() {
         return this.isSubscribed && this.subscription !== null;
+    }
+
+    // =========================
+    // Watchdog (resubscribe si silence prolongé)
+    // =========================
+    startWatchdog() {
+        if (this.watchdogInterval) return;
+        if (this.noEventTimeoutMs <= 0) return; // désactivé si <= 0
+
+        this.watchdogInterval = setInterval(async () => {
+            try {
+                if (!this.camera || !this.camera.isConnected || !this.isSubscribed) {
+                    return; // la reconnexion réseau gérée ailleurs
+                }
+                const now = Date.now();
+                const last = this.lastEventAt || now;
+                const silentFor = now - last;
+                if (silentFor > this.noEventTimeoutMs) {
+                    if (this.isResubscribing) return;
+                    this.isResubscribing = true;
+                    logger.warn(`🔄 Aucun événement pour ${Math.round(silentFor/1000)}s sur ${this.camera.name}, réabonnement au flux d'événements...`);
+                    try {
+                        await this.unsubscribe();
+                        // petite pause pour éviter thrash
+                        await new Promise(r => setTimeout(r, 250));
+                        const ok = await this.subscribe();
+                        if (ok) {
+                            logger.info(`✅ Réabonnement aux événements réussi pour ${this.camera.name}`);
+                        } else {
+                            logger.warn(`⚠️ Réabonnement aux événements échoué pour ${this.camera.name}`);
+                        }
+                    } catch (e) {
+                        logger.error(`Erreur lors du réabonnement des événements pour ${this.camera.name}:`, e);
+                    } finally {
+                        this.isResubscribing = false;
+                    }
+                }
+            } catch (err) {
+                logger.debug(`Watchdog événements erreur pour ${this.camera && this.camera.name}:`, err.message || err);
+            }
+        }, this.watchdogCheckMs);
+    }
+
+    stopWatchdog() {
+        if (this.watchdogInterval) {
+            clearInterval(this.watchdogInterval);
+            this.watchdogInterval = null;
+        }
     }
 }
 
