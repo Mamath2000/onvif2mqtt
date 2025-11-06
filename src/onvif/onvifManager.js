@@ -368,6 +368,26 @@ class OnvifManager {
         logger.info('Toutes les caméras ont été déconnectées');
     }
 
+    // Arrêt propre: désabonner événements, annuler timers reconnexion, vider maps
+    async shutdown() {
+        logger.info('Arrêt propre OnvifManager en cours...');
+        // Stop interval de statut
+        this.stopStatusMonitoring();
+        // Désabonner tous les événements
+        await this.unsubscribeAllFromEvents();
+        // Annuler toutes les reconnexions
+        for (const [name] of this.cameras) {
+            this.cancelReconnection(name);
+        }
+        // Déconnecter toutes les caméras
+        this.cameras.forEach(camera => camera.disconnect());
+        // Nettoyage des structures
+        this.cameras.clear();
+        this.reconnectState.clear();
+        this.eventCallbacks.clear();
+        logger.info('OnvifManager arrêté proprement');
+    }
+
     /**
      * Enregistrer un callback pour un type d'événement spécifique
      * @param {string} eventType - Type d'événement (motion, tamper, etc.)

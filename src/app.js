@@ -378,8 +378,8 @@ class OnvifMqttGateway {
 
         // ✅ AJOUT : Se désabonner des événements ONVIF
         if (this.onvifManager) {
-            await this.onvifManager.unsubscribeAllFromEvents();
-            this.onvifManager.disconnectAllCameras();
+            // Utiliser arrêt propre étendu
+            await this.onvifManager.shutdown();
         }
 
         if (this.mqttManager) {
