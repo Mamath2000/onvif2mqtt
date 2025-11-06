@@ -389,9 +389,7 @@ class OnvifCamera {
                 throw new Error('PTZ non supporté par cette caméra');
             }
 
-            // Essayer différentes méthodes pour aller au preset
             try {
-                // Méthode 1: gotoPreset simple
                 await new Promise((resolve, reject) => {
                     if (typeof this.device.gotoPreset === 'function') {
                         this.device.gotoPreset({
@@ -409,28 +407,7 @@ class OnvifCamera {
                 });
             } catch (error1) {
                 logger.debug(`Méthode gotoPreset échouée pour ${this.name}:`, error1.message);
-                
-                try {
-                    // Méthode 2: ptzGotoPreset
-                    await new Promise((resolve, reject) => {
-                        if (typeof this.device.ptzGotoPreset === 'function') {
-                            this.device.ptzGotoPreset({
-                                preset: presetToken
-                            }, (err) => {
-                                if (err) {
-                                    reject(err);
-                                } else {
-                                    resolve();
-                                }
-                            });
-                        } else {
-                            reject(new Error('ptzGotoPreset non disponible'));
-                        }
-                    });
-                } catch (error2) {
-                    logger.error(`Méthode ptzGotoPreset échouée pour ${this.name}:`, error2.message);
-                    return false;
-                }
+                return false;
             }
             
             logger.debug(`Preset ${presetToken} activé pour ${this.name}`);
