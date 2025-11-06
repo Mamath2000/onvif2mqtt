@@ -43,7 +43,8 @@ class OnvifCamera {
             this.isConnected = false;
             this.device = null;
 
-            const timeout = this.globalConfig ? this.globalConfig.get('network.onvif_timeout', 10000) : 10000;
+            // Timeout exprimé en secondes dans la config
+            const timeout = this.globalConfig ? this.globalConfig.getDurationMs('network.onvif_timeout', 10) : 10000;
 
             // Créer le device ONVIF
             this.device = new onvif.Cam({
@@ -161,14 +162,14 @@ class OnvifCamera {
 
     // Fonctions PTZ (Pan-Tilt-Zoom)
     async moveUp(speed = 0.5) {
-        const moveStep = (this.globalConfig ? this.globalConfig.get('ptz.move_step', 0.1) : 0.1) * 1.5;
+    const moveStep = (this.globalConfig ? this.globalConfig.get('ptz.move_step', 0.1) : 0.1) * 1.5;
         // Inverser si tilt_mode est "inverted"
         const direction = this.tiltMode === 'inverted' ? -moveStep : moveStep;
         return this.ptzMove({ y: direction });
     }
 
     async moveDown(speed = 0.5) {
-        const moveStep = (this.globalConfig ? this.globalConfig.get('ptz.move_step', 0.1) : 0.1) * 1.5;
+    const moveStep = (this.globalConfig ? this.globalConfig.get('ptz.move_step', 0.1) : 0.1) * 1.5;
         // Inverser si tilt_mode est "inverted"
         const direction = this.tiltMode === 'inverted' ? moveStep : -moveStep;
         return this.ptzMove({ y: direction });

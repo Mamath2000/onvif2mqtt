@@ -18,6 +18,7 @@ class OnvifMqttGateway {
         this.isRunning = false;
         this.isDiscoveryEnabled = this.config.get('homeassistant.discovery_enabled', true);
         this.healthCheckInterval = null; // ✅ AJOUT
+    this.discoveryRefreshInterval = null; // ✅ Rafraîchissement périodique HA
     }
 
     async init() {
@@ -59,8 +60,12 @@ class OnvifMqttGateway {
             // Connecter les caméras et lancer la suite
             await this.connectAndSetupCameras();
 
+            // Publier états initiaux OFF retain pour les événements
+            this.onvifManager.publishInitialEventStates(this.mqttManager);
+
             // Démarrer la surveillance des statuts avec l'intervalle configuré
-            const updateInterval = this.config.get('monitoring.status_update_interval', 30000);
+            // monitoring.status_update_interval est désormais en secondes dans la config
+            const updateInterval = this.config.getDurationMs('monitoring.status_update_interval', 30);
             this.onvifManager.startStatusMonitoring(updateInterval, this.onStatusUpdate.bind(this));
 
             // Configurer les callbacks pour les événements ONVIF
@@ -76,6 +81,20 @@ class OnvifMqttGateway {
                 mqttConfig.deviceId,
                 mqttConfig.deviceName
             );
+
+            // Rafraîchir la découverte Home Assistant toutes les 6h (par défaut)
+            const discoveryRefreshInterval = this.config.getDurationMs('homeassistant.discovery_refresh_interval', 21600);
+            if (this.discoveryRefreshInterval) {
+                clearInterval(this.discoveryRefreshInterval);
+            }
+            this.discoveryRefreshInterval = setInterval(() => {
+                try {
+                    this.haHelper.publishGatewayDevice(mqttConfig.deviceId, mqttConfig.deviceName);
+                    logger.debug('Publication Home Assistant (gateway device) rafraîchie');
+                } catch (e) {
+                    logger.warn('Erreur lors du rafraîchissement Home Assistant (gateway): ' + (e && e.message));
+                }
+            }, discoveryRefreshInterval);
 
             const cameraStatuses = this.onvifManager.getAllCameraStatuses();
             Object.values(cameraStatuses).forEach(camStatus => {
@@ -333,7 +352,8 @@ class OnvifMqttGateway {
 
     // ✅ NOUVELLE MÉTHODE : Surveillance de santé globale
     startHealthCheck() {
-        const healthCheckInterval = this.config.get('monitoring.health_check_interval', 60000);
+    // monitoring.health_check_interval en secondes
+    const healthCheckInterval = this.config.getDurationMs('monitoring.health_check_interval', 60);
 
         this.healthCheckInterval = setInterval(async () => {
             try {
@@ -374,6 +394,12 @@ class OnvifMqttGateway {
         if (this.healthCheckInterval) {
             clearInterval(this.healthCheckInterval);
             this.healthCheckInterval = null;
+        }
+
+        // ✅ AJOUT : Arrêter le rafraîchissement HA
+        if (this.discoveryRefreshInterval) {
+            clearInterval(this.discoveryRefreshInterval);
+            this.discoveryRefreshInterval = null;
         }
 
         // ✅ AJOUT : Se désabonner des événements ONVIF

@@ -85,23 +85,19 @@ class OnvifManager {
 
     getReconnectConfig() {
         const cfg = this.config;
-        // Valeurs modernes
-        const baseDelayModern = cfg ? cfg.get('network.reconnect.base_delay_ms', undefined) : undefined;
-        const maxDelayModern = cfg ? cfg.get('network.reconnect.max_delay_ms', undefined) : undefined;
-        const multiplierModern = cfg ? cfg.get('network.reconnect.multiplier', undefined) : undefined;
-        const maxRetriesModern = cfg ? cfg.get('network.reconnect.max_retries', undefined) : undefined;
-        const jitterModern = cfg ? cfg.get('network.reconnect.jitter', undefined) : undefined;
-
-        // Compatibilité ascendante avec les anciennes clés
-        const legacyDelay = cfg ? cfg.get('network.reconnect_delay', undefined) : undefined;
-        const legacyMaxRetries = cfg ? cfg.get('network.max_reconnect_attempts', undefined) : undefined;
+        // Valeurs exprimées en secondes dans la config (sans rétrocompatibilité ms)
+        const baseDelaySec = cfg ? cfg.get('network.reconnect.base_delay', 1) : 1;
+        const maxDelaySec = cfg ? cfg.get('network.reconnect.max_delay', 30) : 30;
+        const multiplier = cfg ? cfg.get('network.reconnect.multiplier', 2.0) : 2.0;
+        const maxRetries = cfg ? cfg.get('network.reconnect.max_retries', 0) : 0;
+        const jitter = cfg ? cfg.get('network.reconnect.jitter', 'full') : 'full';
 
         return {
-            baseDelayMs: baseDelayModern ?? legacyDelay ?? 1000,
-            maxDelayMs: maxDelayModern ?? (Math.max(legacyDelay || 0, 30000) || 30000),
-            multiplier: multiplierModern ?? 2.0,
-            maxRetries: maxRetriesModern ?? (typeof legacyMaxRetries === 'number' ? legacyMaxRetries : 0), // 0 = illimité
-            jitter: jitterModern ?? 'full' // 'full' | 'none'
+            baseDelayMs: baseDelaySec * 1000,
+            maxDelayMs: maxDelaySec * 1000,
+            multiplier,
+            maxRetries,
+            jitter
         };
     }
 
@@ -445,6 +441,22 @@ class OnvifManager {
         logger.info(`✅ ${successCount}/${this.cameras.size} caméra(s) abonnée(s) aux événements`);
         
         return results;
+    }
+
+    // Publier un état initial OFF retain pour les événements supportés (motion, tamper, people, vehicle, pet)
+    publishInitialEventStates(mqttManager) {
+        if (!mqttManager || !mqttManager.isConnected) return;
+        const eventTypes = ['motion','tamper','people','vehicle','pet'];
+        this.cameras.forEach(camera => {
+            const cameraId = camera.name.toLowerCase().replace(/\s+/g, '_');
+            eventTypes.forEach(type => {
+                mqttManager.publishRaw(
+                    `${mqttManager.baseTopic}/${cameraId}/event/${type}`,
+                    'OFF',
+                    { retain: true, qos: 1 }
+                );
+            });
+        });
     }
 
     /**

@@ -8,6 +8,12 @@ class MqttManager {
         this.client = null;
         this.isConnected = false;
         this.baseTopic = config.baseTopic || 'onvif2mqtt';
+        // Cache JSON des presets par objet (invalidation quand l'objet change)
+        this.presetsJsonCache = new WeakMap();
+        // Déduplication: dernier JSON publié par caméra
+        this.lastPresetJsonByCamera = new Map();
+    // Déduplication des événements: état ON/OFF uniquement
+    this.lastEventStateByKey = new Map(); // key: cameraId|eventType -> 'ON'|'OFF'
     }
 
     async connect() {
@@ -116,14 +122,39 @@ class MqttManager {
             );
 
             if (camera.hasPTZ) {
-                const payload = JSON.stringify(camera.presets);
-                this.publishRaw(
-                    `${this.baseTopic}/${cameraId}/presets`,
-                    payload,
-                    { retain: true, qos: 1 }
-                );
-                logger.debug(`Presets publiés pour ${camera.name}: ${payload}`);
+                const payload = this.getCachedPresetJson(camera);
+                // Éviter les republis identiques
+                const last = this.lastPresetJsonByCamera.get(cameraId);
+                if (last !== payload) {
+                    this.publishRaw(
+                        `${this.baseTopic}/${cameraId}/presets`,
+                        payload,
+                        { retain: true, qos: 1 }
+                    );
+                    this.lastPresetJsonByCamera.set(cameraId, payload);
+                    logger.debug(`Presets publiés pour ${camera.name}: ${payload}`);
+                } else {
+                    logger.debug(`Presets inchangés pour ${camera.name}, publication ignorée`);
+                }
             }
+        }
+    }
+
+    // Retourne le JSON des presets en utilisant un cache par objet
+    getCachedPresetJson(camera) {
+        try {
+            const presets = camera && camera.presets ? camera.presets : {};
+            if (typeof presets !== 'object') {
+                return JSON.stringify({});
+            }
+            const cached = this.presetsJsonCache.get(presets);
+            if (cached) return cached;
+            const json = JSON.stringify(presets);
+            this.presetsJsonCache.set(presets, json);
+            return json;
+        } catch (e) {
+            logger.warn(`Erreur de sérialisation des presets pour ${camera && camera.name}: ${e.message}`);
+            return JSON.stringify({});
         }
     }
 
@@ -159,25 +190,37 @@ class MqttManager {
             eventValue = eventData.State === 'true' || eventData.State === true ? 'ON' : 'OFF';
         }
 
-            // Publier l'état simple (ON/OFF)
-        this.publishRaw(
-            `${this.baseTopic}/${cameraId}/event/${eventType}`,
-            eventValue,
-            { retain: true, qos: 1 }
-        );
+        // Déduplication de l'état ON/OFF (retain)
+        const eventKey = this.getEventCacheKey(cameraId, eventType);
+        const lastState = this.lastEventStateByKey.get(eventKey);
+        if (lastState !== eventValue) {
+            this.publishRaw(
+                `${this.baseTopic}/${cameraId}/event/${eventType}`,
+                eventValue,
+                { retain: true, qos: 1 }
+            );
+            this.lastEventStateByKey.set(eventKey, eventValue);
+            logger.debug(`Etat ${eventType} publié pour ${cameraName}: ${eventValue}`);
+        } else {
+            logger.debug(`Etat ${eventType} inchangé pour ${cameraName}, publication ignorée`);
+        }
         
-        // Publier les données complètes en JSON
-        this.publishRaw(
-            `${this.baseTopic}/${cameraId}/event/${eventType}/json`,
-            JSON.stringify({
+    // Publier les données complètes en JSON uniquement en niveau de log debug
+        if (logger.level === 'debug') {
+            const payloadWithTs = {
                 camera: cameraName,
                 eventType: eventType,
                 state: eventValue,
                 data: eventData,
                 timestamp: new Date().toISOString()
-            }),
-            { retain: false, qos: 1 }
-        );
+            };
+            this.publishRaw(
+                `${this.baseTopic}/${cameraId}/event/${eventType}/json`,
+                JSON.stringify(payloadWithTs),
+                { retain: false, qos: 1 }
+            );
+            logger.debug(`Payload JSON ${eventType} publié pour ${cameraName}`);
+        }
         
         logger.info(`📡 Événement ${eventType} publié pour ${cameraName}: ${eventValue}`);
         
@@ -254,6 +297,13 @@ class MqttManager {
             }
         }
     }
+
+    // Helpers déduplication des événements
+    getEventCacheKey(cameraId, eventType) {
+        return `${cameraId}|${eventType}`;
+    }
+
+    // Plus de cache/dédup JSON pour les événements (publication conditionnée au niveau de log)
     
     // Méthodes pour émettre des événements (pattern EventEmitter)
     emit(event, data) {

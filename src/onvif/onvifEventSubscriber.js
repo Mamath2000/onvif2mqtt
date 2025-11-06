@@ -19,8 +19,9 @@ class OnvifEventSubscriber {
         this.isResubscribing = false;
         // Configurable via camera.globalConfig
         const cfg = camera && camera.globalConfig;
-        this.watchdogCheckMs = cfg ? cfg.get('events.watchdog.check_interval_ms', 30000) : 30000;
-        this.noEventTimeoutMs = cfg ? cfg.get('events.watchdog.no_event_timeout_ms', 120000) : 120000;
+    // Watchdog intervals (secondes -> ms)
+    this.watchdogCheckMs = cfg ? cfg.getDurationMs('events.watchdog.check_interval', 30) : 30000;
+    this.noEventTimeoutMs = cfg ? cfg.getDurationMs('events.watchdog.no_event_timeout', 120) : 120000;
     }
 
     /**
