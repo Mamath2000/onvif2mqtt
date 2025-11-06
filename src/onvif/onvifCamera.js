@@ -410,15 +410,44 @@ class OnvifCamera {
                 }
             }
 
-            this.presets = presets;
-            logger.debug(`${Object.keys(presets).length} presets trouvés pour ${this.name}`);
-            return presets || {};
+            // Normaliser la structure des presets
+            this.presets = this.normalizePresets(presets);
+            logger.debug(`${Object.keys(this.presets).length} presets trouvés pour ${this.name}`);
+            return this.presets || {};
             
         } catch (error) {
             logger.error(`Erreur lors de la récupération des presets pour ${this.name}:`, error);
             this.presets = {};
             return {};
         }
+    }
+
+    /**
+     * Normalise la structure des presets reçus de l'API ONVIF
+     * @param {object} rawPresets - Presets bruts de l'API
+     * @returns {object} - Presets normalisés au format { "token": "name" }
+     */
+    normalizePresets(rawPresets) {
+        if (!rawPresets || typeof rawPresets !== 'object') {
+            return {};
+        }
+
+        const normalized = {};
+
+        for (const [key, preset] of Object.entries(rawPresets)) {
+            try {
+                // Structure: { "$": { "token": 1 }, "name": "Point de vue 1", ... }
+                const token = preset.$?.token || preset.token || key;
+                const name = preset.name || preset.Name || `Preset ${token}`;
+                
+                // Format simple: { "1": "Point de vue 1" }
+                normalized[token] = name;
+            } catch (error) {
+                logger.debug(`Erreur normalisation preset ${key}:`, error.message);
+            }
+        }
+
+        return normalized;
     }
 
     async gotoPreset(presetToken, profileIndex = 0) {
