@@ -16,9 +16,60 @@ let loggerConfig = {
     isDevelopment: process.env.NODE_ENV !== 'production'
 };
 
+// Filtrage des informations sensibles (password, token, authorization, secret, api key)
+const SENSITIVE_KEYS = new Set(['password', 'passwd', 'pwd', 'secret', 'token', 'access_token', 'refresh_token', 'authorization', 'auth', 'api_key', 'apikey']);
+
+function sanitizeMessageString(msg) {
+    if (typeof msg !== 'string') return msg;
+    try {
+        let out = msg;
+        // masquage patterns simples: password=..., password: ...
+        out = out.replace(/(password\s*[:=]\s*)([^,\s]+)/ig, '$1***');
+        out = out.replace(/(passwd\s*[:=]\s*)([^,\s]+)/ig, '$1***');
+        out = out.replace(/(pwd\s*[:=]\s*)([^,\s]+)/ig, '$1***');
+        out = out.replace(/(token\s*[:=]\s*)([^,\s]+)/ig, '$1***');
+        out = out.replace(/(authorization\s*[:=]\s*)([^,\s]+)/ig, '$1***');
+        out = out.replace(/(api[_-]?key\s*[:=]\s*)([^,\s]+)/ig, '$1***');
+        return out;
+    } catch (_) {
+        return msg;
+    }
+}
+
+function sanitizeObjectDeep(obj, seen = new WeakSet()) {
+    if (!obj || typeof obj !== 'object') return obj;
+    if (seen.has(obj)) return obj;
+    seen.add(obj);
+    const isArr = Array.isArray(obj);
+    const keys = isArr ? Object.keys(obj) : Object.keys(obj);
+    for (const key of keys) {
+        const value = obj[key];
+        if (SENSITIVE_KEYS.has(String(key).toLowerCase())) {
+            // Masquer valeur sensible
+            obj[key] = '***';
+        } else if (typeof value === 'object' && value !== null) {
+            sanitizeObjectDeep(value, seen);
+        } else if (typeof value === 'string') {
+            obj[key] = sanitizeMessageString(value);
+        }
+    }
+    return obj;
+}
+
+const sanitizeFormat = winston.format((info) => {
+    // Sanitize message string
+    if (typeof info.message === 'string') {
+        info.message = sanitizeMessageString(info.message);
+    }
+    // IMPORTANT: Mutate info in place to preserve Winston symbol properties
+    sanitizeObjectDeep(info);
+    return info;
+});
+
 const logger = winston.createLogger({
     level: loggerConfig.level,
     format: winston.format.combine(
+        sanitizeFormat(),
         winston.format.timestamp({
             format: 'YYYY-MM-DD HH:mm:ss'
         }),
@@ -41,6 +92,7 @@ const logger = winston.createLogger({
         // Console transport TOUJOURS actif pour les logs Docker
         new winston.transports.Console({
             format: winston.format.combine(
+                sanitizeFormat(),
                 winston.format.colorize(),
                 winston.format.simple()
             )
