@@ -8,13 +8,12 @@ class MqttManager {
         this.client = null;
         this.isConnected = false;
         this.baseTopic = config.baseTopic || 'onvif2mqtt';
-        this.deviceConfig = {
-            identifiers: [config.deviceId],
-            name: config.deviceName,
-            model: "ONVIF MQTT Controller",
-            manufacturer: "Custom",
-            sw_version: "1.0.0"
-        };
+        // Cache JSON des presets par objet (invalidation quand l'objet change)
+        this.presetsJsonCache = new WeakMap();
+        // Déduplication: dernier JSON publié par caméra
+        this.lastPresetJsonByCamera = new Map();
+    // Déduplication des événements: état ON/OFF uniquement
+    this.lastEventStateByKey = new Map(); // key: cameraId|eventType -> 'ON'|'OFF'
     }
 
     async connect() {
@@ -115,23 +114,116 @@ class MqttManager {
         );
         if (camera.isConnected) {
 
-            // Capabilities - PTZ
+            // PTZ
             this.publishRaw(
-                `${this.baseTopic}/${cameraId}/capabilities/ptz`,
+                `${this.baseTopic}/${cameraId}/ptz`,
                 (camera.hasPTZ ? 'true' : 'false'),
                 { retain: true }
             );
 
             if (camera.hasPTZ) {
-                const payload = JSON.stringify(camera.presets);
-                this.publishRaw(
-                    `${this.baseTopic}/${cameraId}/presets`,
-                    payload,
-                    { retain: true, qos: 1 }
-                );
-                logger.debug(`Presets publiés pour ${camera.name}: ${payload}`);
+                const payload = this.getCachedPresetJson(camera);
+                // Éviter les republis identiques
+                const last = this.lastPresetJsonByCamera.get(cameraId);
+                if (last !== payload) {
+                    this.publishRaw(
+                        `${this.baseTopic}/${cameraId}/presets`,
+                        payload,
+                        { retain: true, qos: 1 }
+                    );
+                    this.lastPresetJsonByCamera.set(cameraId, payload);
+                    logger.debug(`Presets publiés pour ${camera.name}: ${payload}`);
+                } else {
+                    logger.debug(`Presets inchangés pour ${camera.name}, publication ignorée`);
+                }
             }
         }
+    }
+
+    // Retourne le JSON des presets en utilisant un cache par objet
+    getCachedPresetJson(camera) {
+        try {
+            const presets = camera && camera.presets ? camera.presets : {};
+            if (typeof presets !== 'object') {
+                return JSON.stringify({});
+            }
+            const cached = this.presetsJsonCache.get(presets);
+            if (cached) return cached;
+            const json = JSON.stringify(presets);
+            this.presetsJsonCache.set(presets, json);
+            return json;
+        } catch (e) {
+            logger.warn(`Erreur de sérialisation des presets pour ${camera && camera.name}: ${e.message}`);
+            return JSON.stringify({});
+        }
+    }
+
+    /**
+     * Publier un événement de caméra (motion, tamper, etc.)
+     * @param {string} cameraName - Nom de la caméra
+     * @param {string} eventType - Type d'événement (motion, tamper, etc.)
+     * @param {object} eventData - Données de l'événement
+     */
+    publishCameraEvent(cameraName, eventType, eventData) {
+        const cameraId = cameraName.toLowerCase().replace(/\s+/g, '_');
+        
+        // Déterminer la valeur de l'événement (ON/OFF pour les binaires)
+        let eventValue = 'ON';
+
+        // Pour les événements de mouvement
+        if (eventType === 'motion' && eventData.IsMotion !== undefined) {
+            eventValue = eventData.IsMotion === 'true' || eventData.IsMotion === true ? 'ON' : 'OFF';
+
+        } else if (eventType === 'tamper' && eventData.IsTamper !== undefined) {
+            eventValue = eventData.IsTamper === 'true' || eventData.IsTamper === true ? 'ON' : 'OFF';
+
+        } else if (eventType === 'people' && eventData.IsPeople !== undefined) {
+            eventValue = eventData.IsPeople === 'true' || eventData.IsPeople === true ? 'ON' : 'OFF';
+
+        } else if (eventType === 'vehicle' && eventData.IsVehicle !== undefined) {
+            eventValue = eventData.IsVehicle === 'true' || eventData.IsVehicle === true ? 'ON' : 'OFF';
+
+        } else if (eventType === 'pet' && eventData.IsPet !== undefined) {
+            eventValue = eventData.IsPet === 'true' || eventData.IsPet === true ? 'ON' : 'OFF';
+
+        } else if (eventData.State !== undefined) {
+            eventValue = eventData.State === 'true' || eventData.State === true ? 'ON' : 'OFF';
+        }
+
+        // Déduplication de l'état ON/OFF (retain)
+        const eventKey = this.getEventCacheKey(cameraId, eventType);
+        const lastState = this.lastEventStateByKey.get(eventKey);
+        if (lastState !== eventValue) {
+            this.publishRaw(
+                `${this.baseTopic}/${cameraId}/event/${eventType}`,
+                eventValue,
+                { retain: true, qos: 1 }
+            );
+            this.lastEventStateByKey.set(eventKey, eventValue);
+            logger.debug(`Etat ${eventType} publié pour ${cameraName}: ${eventValue}`);
+        } else {
+            logger.debug(`Etat ${eventType} inchangé pour ${cameraName}, publication ignorée`);
+        }
+        
+    // Publier les données complètes en JSON uniquement en niveau de log debug
+        if (logger.level === 'debug') {
+            const payloadWithTs = {
+                camera: cameraName,
+                eventType: eventType,
+                state: eventValue,
+                data: eventData,
+                timestamp: new Date().toISOString()
+            };
+            this.publishRaw(
+                `${this.baseTopic}/${cameraId}/event/${eventType}/json`,
+                JSON.stringify(payloadWithTs),
+                { retain: false, qos: 1 }
+            );
+            logger.debug(`Payload JSON ${eventType} publié pour ${cameraName}`);
+        }
+        
+        logger.info(`📡 Événement ${eventType} publié pour ${cameraName}: ${eventValue}`);
+        
     }
 
     // // Publier une image de caméra
@@ -205,6 +297,13 @@ class MqttManager {
             }
         }
     }
+
+    // Helpers déduplication des événements
+    getEventCacheKey(cameraId, eventType) {
+        return `${cameraId}|${eventType}`;
+    }
+
+    // Plus de cache/dédup JSON pour les événements (publication conditionnée au niveau de log)
     
     // Méthodes pour émettre des événements (pattern EventEmitter)
     emit(event, data) {
@@ -231,11 +330,14 @@ class MqttManager {
             logger.info('Déconnecté du broker MQTT');
         }
     }
-
     publishRaw(topic, payload, options = {}) {
         if (this.client && this.isConnected) {
-            this.client.publish(topic, payload, options);
-            logger.debug(`Message brut publié - Topic: ${topic}`);
+            try {
+                this.client.publish(topic, payload, options);
+                logger.debug(`Message brut publié - Topic: ${topic}`);
+            } catch (error) {
+                logger.warn(`Erreur lors de la publication sur ${topic}: ${error.message}`);
+            }
         } else {
             logger.warn(`Impossible de publier sur ${topic} - MQTT non connecté`);
         }

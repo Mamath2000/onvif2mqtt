@@ -113,7 +113,8 @@ class HADiscoveryHelper {
                         state_topic: `${stateTopic}/lwt`,
                         payload_off: 'offline',
                         payload_on: 'online',
-                        device_class: 'connectivity'
+                        device_class: 'connectivity',
+                        has_entity_name: true
                     }
                 }
             };
@@ -125,42 +126,76 @@ class HADiscoveryHelper {
                     unique_id: `${identifier}_preset_${preset}`,
                     name: `Preset ${key}`,
                     command_topic: `${stateTopic}/goPreset`,
-                    payload_press: preset
+                    payload_press: key,
+                    has_entity_name: true
                 };
             });
 
             // Add PTZ movement buttons
             const movements = [
-                { key: 'up', name: 'Up' },
-                { key: 'down', name: 'Down' },
-                { key: 'left', name: 'Left' },
-                { key: 'right', name: 'Right' },
-                { key: 'stop', name: 'Stop' }
+                { key: 'up', name: 'Up', mode: 'tilt' },
+                { key: 'down', name: 'Down', mode: 'tilt' },
+                { key: 'left', name: 'Left', mode: 'pan' },
+                { key: 'right', name: 'Right', mode: 'pan' },
+                { key: 'stop', name: 'Stop', mode: 'both' }
             ];
             movements.forEach(move => {
-                cameraPayload.components[`${identifier}_move_${move.key}`] = {
-                    platform: 'button',
-                    default_entity_id : `${identifier}_move_${move.key}`,
-                    unique_id: `${identifier}_move_${move.key}`,
-                    name: `Move ${move.name}`,
-                    command_topic: `${stateTopic}/cmd`,
-                    payload_press: `move-${move.key}`
-                };
+                // Vérifier si on doit générer ce bouton selon les modes pan/tilt
+                let shouldGenerate = true;
+                if (move.mode === 'pan' && cameraStatus.panMode === 'hide') {
+                    shouldGenerate = false;
+                } else if (move.mode === 'tilt' && cameraStatus.tiltMode === 'hide') {
+                    shouldGenerate = false;
+                } else if (move.mode === 'both' && cameraStatus.panMode === 'hide' && cameraStatus.tiltMode === 'hide') {
+                    shouldGenerate = false;
+                }
+
+                if (shouldGenerate) {
+                    cameraPayload.components[`${identifier}_move_${move.key}`] = {
+                        platform: 'button',
+                        default_entity_id : `${identifier}_move_${move.key}`,
+                        unique_id: `${identifier}_move_${move.key}`,
+                        name: `Move ${move.name}`,
+                        command_topic: `${stateTopic}/cmd`,
+                        payload_press: `move-${move.key}`,
+                        has_entity_name: true
+                    };
+                }
             });
 
             // Add zoom buttons
-            const zooms = [
-                { key: 'zoom_in', name: 'Zoom In', payload: 'in' },
-                { key: 'zoom_out', name: 'Zoom Out', payload: 'out' }
-            ];
-            zooms.forEach(zoom => {
-                cameraPayload.components[`${identifier}_${zoom.key}`] = {
-                    platform: 'button',
-                    default_entity_id : `${identifier}_${zoom.key}`,
-                    unique_id: `${identifier}_${zoom.key}`,
-                    name: zoom.name,
-                    command_topic: `${stateTopic}/cmd`,
-                    payload_press: `zoom-${zoom.payload}`
+            if (cameraStatus.zoomMode !== 'hide') {
+                const zooms = [
+                    { key: 'zoom_in', name: 'Zoom In', payload: 'in' },
+                    { key: 'zoom_out', name: 'Zoom Out', payload: 'out' }
+                ];
+                zooms.forEach(zoom => {
+                    cameraPayload.components[`${identifier}_${zoom.key}`] = {
+                        platform: 'button',
+                        default_entity_id : `${identifier}_${zoom.key}`,
+                        unique_id: `${identifier}_${zoom.key}`,
+                        name: zoom.name,
+                        command_topic: `${stateTopic}/cmd`,
+                        payload_press: `zoom-${zoom.payload}`,
+                        has_entity_name: true
+                    };
+                });
+            }
+
+            const eventTypes = cameraStatus.eventTypes || [];
+            eventTypes.forEach(eventType => {
+                cameraPayload.components[`${identifier}_event_${eventType}`] = {
+                    platform: 'binary_sensor',
+                    default_entity_id : `${identifier}_event_${eventType}`,
+                    unique_id: `${identifier}_event_${eventType}`,
+                    name: `Event ${eventType}`,
+                    state_topic: `${stateTopic}/event/${eventType}`,
+                    payload_on: 'ON',
+                    payload_off: 'OFF',
+                    device_class: (eventType === 'motion' ? 'motion' : (eventType === 'tamper' ? 'safety' : 'occupancy')),
+                    force_update: true,
+                    has_entity_name: true,
+                    off_delay: 10
                 };
             });
 

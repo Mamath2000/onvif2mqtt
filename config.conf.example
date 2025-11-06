@@ -27,10 +27,24 @@ base_topic = onvif2mqtt
 [network]
 # Nombre maximum de tentatives de reconnexion
 max_reconnect_attempts = 3
-# Délai entre les tentatives de reconnexion (en millisecondes)
-reconnect_delay = 5000
-# Timeout pour les connexions ONVIF (en millisecondes)
-onvif_timeout = 10000
+# Délai entre les tentatives de reconnexion (EN SECONDES)
+reconnect_delay = 5
+# Timeout pour les connexions ONVIF (EN SECONDES)
+onvif_timeout = 10
+
+# Paramètres avancés de reconnexion (optionnels, EN SECONDES)
+# Si définis, ils remplacent les paramètres legacy ci-dessus
+# Backoff exponentiel avec jitter (pleine gigue)
+# Délai de base du backoff (secondes)
+reconnect.base_delay = 1
+# Délai maximum entre deux tentatives (secondes)
+reconnect.max_delay = 30
+# Multiplicateur d'exponentiation (>= 1.0)
+reconnect.multiplier = 2.0
+# Nombre max de tentatives (0 = illimité)
+reconnect.max_retries = 0
+# Type de jitter: full | none
+reconnect.jitter = full
 
 [logging]
 # Niveau de log (error, warn, info, debug)
@@ -39,10 +53,10 @@ level = info
 file = logs/app.log
 
 [monitoring]
-# Intervalle de mise à jour des statuts (en millisecondes)
-status_update_interval = 30000
-# Intervalle de vérification de santé (en millisecondes)
-health_check_interval = 60000
+# Intervalle de mise à jour des statuts (EN SECONDES)
+status_update_interval = 30
+# Intervalle de vérification de santé (EN SECONDES)
+health_check_interval = 60
 
 [ptz]
 # Amplitude pour les mouvements directionnels (valeurs entre 0.1 et 1.0)
@@ -51,6 +65,26 @@ move_step = 0.1
 zoom_step = 0.15
 # Vitesse par défaut pour les commandes PTZ (valeurs entre 0.1 et 1.0)
 default_speed = 0.5
+
+[events]
+# Activer la surveillance des événements ONVIF (détection de mouvement, etc.)
+enabled = true
+# Liste des types d'événements à surveiller par défaut (séparés par des virgules)
+# Types disponibles: 
+#   - motion: Détection de mouvement standard
+#   - tamper: Sabotage/altération de la caméra
+#   - people: Détection de personne (IA TP-Link)
+#   - vehicle: Détection de véhicule (IA TP-Link)
+#   - pet: Détection d'animal/animal domestique (IA TP-Link)
+# Utilisez "all" ou laissez vide pour surveiller tous les types
+# Peut être surchargé au niveau de chaque caméra
+default_event_types = motion, tamper, people, vehicle, pet
+
+# Watchdog d'événements (réabonnement automatique si silence prolongé)
+# Intervalle de vérification du watchdog (EN SECONDES)
+watchdog.check_interval = 30
+# Durée maximale sans événement avant réabonnement (EN SECONDES)
+watchdog.no_event_timeout = 120
 
 # Configuration des caméras
 # Format: [camera.nom_unique]
@@ -62,6 +96,14 @@ host = 192.168.1.100
 port = 2020
 username = admin
 password = votre_mot_de_passe
+# Types d'événements pour cette caméra (optionnel, utilise default_event_types si non spécifié)
+event_types = motion, people, vehicle, pet
+# Mode Pan (mouvement horizontal) : hide, normal, inverted (défaut: normal)
+pan_mode = normal
+# Mode Tilt (mouvement vertical) : hide, normal, inverted (défaut: normal)
+tilt_mode = normal
+# Mode Zoom : hide, normal (défaut: normal)
+zoom_mode = normal
 
 [camera.exemple2]
 name = Caméra Jardin
@@ -69,6 +111,10 @@ host = 192.168.1.101
 port = 2020
 username = admin
 password = votre_mot_de_passe
+# Seulement détection de mouvement pour cette caméra
+event_types = motion
+# Exemple : inverser le tilt car la caméra est montée à l'envers
+tilt_mode = inverted
 
 # Ajoutez autant de caméras que nécessaire en suivant le même format
 # [camera.nom_unique]

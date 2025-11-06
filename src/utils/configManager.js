@@ -143,6 +143,17 @@ class ConfigManager {
     }
 
     /**
+     * Récupère une durée en millisecondes depuis une valeur exprimée en secondes dans la config.
+     * Aucune rétrocompatibilité ms: toutes les valeurs sont attendues en secondes.
+     */
+    getDurationMs(path, defaultSeconds) {
+        const raw = this.get(path, defaultSeconds);
+        const num = typeof raw === 'number' ? raw : parseFloat(raw);
+        const seconds = isNaN(num) ? defaultSeconds : num;
+        return seconds * 1000;
+    }
+
+    /**
      * Récupère toutes les caméras configurées
      * @returns {Object} - Objet contenant toutes les caméras
      */

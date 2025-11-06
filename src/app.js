@@ -8,16 +8,17 @@ class OnvifMqttGateway {
     constructor() {
         // Charger la configuration
         this.config = new ConfigManager();
-        
+
         // Configurer le logger avec la nouvelle configuration
         logger.configure(this.config);
-        
+
         this.mqttManager = null;
         this.onvifManager = null;
         this.haHelper = null;
         this.isRunning = false;
         this.isDiscoveryEnabled = this.config.get('homeassistant.discovery_enabled', true);
         this.healthCheckInterval = null; // ✅ AJOUT
+    this.discoveryRefreshInterval = null; // ✅ Rafraîchissement périodique HA
     }
 
     async init() {
@@ -41,8 +42,8 @@ class OnvifMqttGateway {
             logger.info(`📡 Topic de base: ${mqttConfig.baseTopic}`);
 
             // Initialiser les gestionnaires
-            this.mqttManager = new MqttManager(mqttConfig);
             this.onvifManager = new OnvifManager(this.config);
+            this.mqttManager = new MqttManager(mqttConfig, this.onvifManager);
 
             // Configurer les événements MQTT
             // this.mqttManager.on('cameraCommand', this.handleMqttCommand.bind(this));
@@ -59,9 +60,16 @@ class OnvifMqttGateway {
             // Connecter les caméras et lancer la suite
             await this.connectAndSetupCameras();
 
+            // Publier états initiaux OFF retain pour les événements
+            this.onvifManager.publishInitialEventStates(this.mqttManager);
+
             // Démarrer la surveillance des statuts avec l'intervalle configuré
-            const updateInterval = this.config.get('monitoring.status_update_interval', 30000);
+            // monitoring.status_update_interval est désormais en secondes dans la config
+            const updateInterval = this.config.getDurationMs('monitoring.status_update_interval', 30);
             this.onvifManager.startStatusMonitoring(updateInterval, this.onStatusUpdate.bind(this));
+
+            // Configurer les callbacks pour les événements ONVIF
+            this.setupEventHandlers();
 
             // Démarrer la découverte des appareils Home Assistant
             this.haHelper = new HADiscoveryHelper(this.mqttManager, {
@@ -74,6 +82,20 @@ class OnvifMqttGateway {
                 mqttConfig.deviceName
             );
 
+            // Rafraîchir la découverte Home Assistant toutes les 6h (par défaut)
+            const discoveryRefreshInterval = this.config.getDurationMs('homeassistant.discovery_refresh_interval', 21600);
+            if (this.discoveryRefreshInterval) {
+                clearInterval(this.discoveryRefreshInterval);
+            }
+            this.discoveryRefreshInterval = setInterval(() => {
+                try {
+                    this.haHelper.publishGatewayDevice(mqttConfig.deviceId, mqttConfig.deviceName);
+                    logger.debug('Publication Home Assistant (gateway device) rafraîchie');
+                } catch (e) {
+                    logger.warn('Erreur lors du rafraîchissement Home Assistant (gateway): ' + (e && e.message));
+                }
+            }, discoveryRefreshInterval);
+
             const cameraStatuses = this.onvifManager.getAllCameraStatuses();
             Object.values(cameraStatuses).forEach(camStatus => {
                 this.haHelper.publishCameraDevice(mqttConfig.deviceId, camStatus);
@@ -82,6 +104,7 @@ class OnvifMqttGateway {
             this.isRunning = true;
             logger.info('✅ Contrôleur ONVIF-MQTT démarré avec succès');
             logger.info('🔗 Connexions établies et prêt à recevoir des commandes');
+            logger.info('📡 Surveillance des événements ONVIF activée');
 
         } catch (error) {
             logger.error('❌ Erreur lors de l\'initialisation:', error);
@@ -92,15 +115,19 @@ class OnvifMqttGateway {
     getCamerasFromConfig() {
         const cameras = [];
         const camerasConfig = this.config.getCameras();
-        
+
         logger.info(`🔍 Chargement des caméras depuis la configuration...`);
-        
+
         for (const [cameraKey, cameraConfig] of Object.entries(camerasConfig)) {
             const name = cameraConfig.name;
             const host = cameraConfig.host;
             const port = cameraConfig.port;
             const username = cameraConfig.username;
             const password = cameraConfig.password;
+            const event_types = cameraConfig.event_types; // Récupérer les types d'événements
+            const pan_mode = cameraConfig.pan_mode || 'normal'; // Mode pan (hide, normal, inverted)
+            const tilt_mode = cameraConfig.tilt_mode || 'normal'; // Mode tilt (hide, normal, inverted)
+            const zoom_mode = cameraConfig.zoom_mode || 'normal'; // Mode zoom (hide, normal)
 
             if (name && host && username && password) {
                 cameras.push({
@@ -108,14 +135,18 @@ class OnvifMqttGateway {
                     host,
                     port: parseInt(port) || 80,
                     username,
-                    password
+                    password,
+                    event_types: event_types || null, // Ajouter les types d'événements
+                    pan_mode: pan_mode,
+                    tilt_mode: tilt_mode,
+                    zoom_mode: zoom_mode
                 });
                 logger.info(`📹 Caméra trouvée: ${name} (${host}:${port || 80})`);
             } else {
                 logger.warn(`⚠️  Configuration incomplète pour la caméra: ${cameraKey}`);
             }
         }
-        
+
         logger.info(`📊 Total: ${cameras.length} caméra(s) configurée(s)`);
         return cameras;
     }
@@ -125,6 +156,15 @@ class OnvifMqttGateway {
         if (cameras.length > 0) {
             logger.info(`Chargement de ${cameras.length} caméra(s) depuis la configuration`);
             await this.onvifManager.connectAllCameras();
+
+            // Note: La découverte automatique des événements supportés nécessite une version 
+            // plus récente de la bibliothèque onvif. Pour l'instant, tous les événements
+            // configurés seront tentés, et ceux non supportés seront simplement ignorés.
+            const eventsEnabled = this.config.get('events.enabled', true);
+            if (eventsEnabled) {
+                logger.info('📡 Les événements ONVIF sont activés - souscription aux événements configurés');
+            }
+
             // Publier la configuration de découverte pour Home Assistant
             for (const camera of cameras) {
                 this.mqttManager.publishCameraState(camera);
@@ -294,11 +334,11 @@ class OnvifMqttGateway {
                 if (camera) {
                     // Publier l'état Home Assistant
                     this.mqttManager.publishCameraState(camera);
-                    
+
                     // ✅ Amélioration : vérifier d'abord l'état de connexion
                     if (!camera.isConnected && !camera.isConnecting) {
                         logger.warn(`Caméra ${camera.name} déconnectée, tentative de reconnexion...`);
-                        
+
                         this.onvifManager.attemptReconnection(camera, 1).catch(error => {
                             logger.error(`Échec de reconnexion pour ${camera.name}:`, error);
                         });
@@ -312,8 +352,9 @@ class OnvifMqttGateway {
 
     // ✅ NOUVELLE MÉTHODE : Surveillance de santé globale
     startHealthCheck() {
-        const healthCheckInterval = this.config.get('monitoring.health_check_interval', 60000);
-        
+    // monitoring.health_check_interval en secondes
+    const healthCheckInterval = this.config.getDurationMs('monitoring.health_check_interval', 60);
+
         this.healthCheckInterval = setInterval(async () => {
             try {
                 // Vérifier la connexion MQTT
@@ -355,8 +396,16 @@ class OnvifMqttGateway {
             this.healthCheckInterval = null;
         }
 
+        // ✅ AJOUT : Arrêter le rafraîchissement HA
+        if (this.discoveryRefreshInterval) {
+            clearInterval(this.discoveryRefreshInterval);
+            this.discoveryRefreshInterval = null;
+        }
+
+        // ✅ AJOUT : Se désabonner des événements ONVIF
         if (this.onvifManager) {
-            this.onvifManager.disconnectAllCameras();
+            // Utiliser arrêt propre étendu
+            await this.onvifManager.shutdown();
         }
 
         if (this.mqttManager) {
@@ -364,6 +413,107 @@ class OnvifMqttGateway {
         }
 
         logger.info('Gateway ONVIF-MQTT arrêtée');
+    }
+
+    /**
+     * Configurer les gestionnaires d'événements ONVIF
+     */
+    setupEventHandlers() {
+        // Lire la liste des types d'événements par défaut
+        const defaultEventTypesConfig = this.config.get('events.default_event_types', 'all');
+        let defaultEnabledEventTypes = [];
+
+        if (defaultEventTypesConfig.toLowerCase() === 'all' || defaultEventTypesConfig.trim() === '') {
+            // Si 'all' ou vide, activer tous les types par défaut
+            defaultEnabledEventTypes = ['motion', 'tamper', 'people', 'vehicle', 'pet'];
+            logger.info('📡 Types d\'événements ONVIF par défaut: tous activés');
+        } else {
+            // Parser la liste des types (séparés par des virgules)
+            defaultEnabledEventTypes = defaultEventTypesConfig.split(',').map(type => type.trim()).filter(type => type.length > 0);
+            logger.info(`📡 Types d'événements ONVIF par défaut: ${defaultEnabledEventTypes.join(', ')}`);
+        }
+
+        // Construire une map des event_types par caméra
+        const cameras = this.config.getCameras();
+        const cameraEventTypes = new Map();
+        
+        for (const [cameraId, cameraConfig] of Object.entries(cameras)) {
+            let cameraEvents = defaultEnabledEventTypes;
+            
+            // Si la caméra a des event_types spécifiques, les utiliser
+            if (cameraConfig.event_types) {
+                const cameraEventTypesConfig = cameraConfig.event_types;
+                if (cameraEventTypesConfig.toLowerCase() === 'all') {
+                    cameraEvents = ['motion', 'tamper', 'people', 'vehicle', 'pet'];
+                } else {
+                    cameraEvents = cameraEventTypesConfig.split(',').map(type => type.trim()).filter(type => type.length > 0);
+                }
+                logger.info(`  📹 ${cameraId}: ${cameraEvents.join(', ')}`);
+            }
+            
+            cameraEventTypes.set(cameraId, cameraEvents);
+        }
+
+        // Fonction helper pour vérifier si un événement est autorisé pour une caméra
+        const isEventAllowedForCamera = (cameraName, eventType) => {
+            const allowedTypes = cameraEventTypes.get(cameraName);
+            if (!allowedTypes) {
+                // Si la caméra n'est pas dans la config, utiliser les types par défaut
+                return defaultEnabledEventTypes.includes(eventType);
+            }
+            return allowedTypes.includes(eventType);
+        };
+
+        // Enregistrer les callbacks pour tous les types d'événements
+        // Le filtrage se fait au niveau du callback
+
+        // Événement de détection de mouvement
+        this.onvifManager.onEvent('motion', (cameraName, eventData) => {
+            if (isEventAllowedForCamera(cameraName, 'motion')) {
+                logger.info(`🚨 Détection de mouvement - Caméra: ${cameraName}`, eventData);
+                this.mqttManager.publishCameraEvent(cameraName, 'motion', eventData);
+            }
+        });
+
+        // Événement de détection de personne (IA TP-Link)
+        this.onvifManager.onEvent('people', (cameraName, eventData) => {
+            if (isEventAllowedForCamera(cameraName, 'people')) {
+                logger.info(`👤 Détection de personne - Caméra: ${cameraName}`, eventData);
+                this.mqttManager.publishCameraEvent(cameraName, 'people', eventData);
+            }
+        });
+
+        // Événement de détection de véhicule (IA TP-Link)
+        this.onvifManager.onEvent('vehicle', (cameraName, eventData) => {
+            if (isEventAllowedForCamera(cameraName, 'vehicle')) {
+                logger.info(`🚗 Détection de véhicule - Caméra: ${cameraName}`, eventData);
+                this.mqttManager.publishCameraEvent(cameraName, 'vehicle', eventData);
+            }
+        });
+
+        // Événement de détection d'animal/pet (IA TP-Link)
+        this.onvifManager.onEvent('pet', (cameraName, eventData) => {
+            if (isEventAllowedForCamera(cameraName, 'pet')) {
+                logger.info(`🐾 Détection d\'animal - Caméra: ${cameraName}`, eventData);
+                this.mqttManager.publishCameraEvent(cameraName, 'pet', eventData);
+            }
+        });
+
+        // Événement de sabotage/altération
+        this.onvifManager.onEvent('tamper', (cameraName, eventData) => {
+            if (isEventAllowedForCamera(cameraName, 'tamper')) {
+                logger.warn(`⚠️  Détection de sabotage - Caméra: ${cameraName}`, eventData);
+                this.mqttManager.publishCameraEvent(cameraName, 'tamper', eventData);
+            }
+        });
+
+        // Gestionnaire pour tous les événements non reconnus (toujours actif)
+        this.onvifManager.onEvent('unknown', (cameraName, eventData) => {
+            logger.debug(`❓ Événement inconnu - Caméra: ${cameraName}`, eventData);
+            this.mqttManager.publishCameraEvent(cameraName, 'unknown', eventData);
+        });
+
+        logger.info(`✅ Gestionnaires d\'événements ONVIF configurés avec filtrage par caméra`);
     }
 }
 // Fonction principale
@@ -397,10 +547,10 @@ async function main() {
 
     try {
         await gateway.init();
-        
+
         // ✅ AJOUT : Démarrer la surveillance de santé globale
         gateway.startHealthCheck();
-        
+
         logger.info('🎉 Gateway ONVIF-MQTT démarrée avec succès !');
         logger.info('📞 Passerelle prête à recevoir des commandes MQTT');
     } catch (error) {

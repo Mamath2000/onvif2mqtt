@@ -6,11 +6,22 @@ class OnvifManager {
         this.cameras = new Map();
         this.statusUpdateInterval = null;
         this.config = config;
+        this.eventCallbacks = new Map(); // Callbacks pour les événements
+        // État de reconnexion par caméra: { attempts, timer, lastError }
+        this.reconnectState = new Map();
     }
 
     addCamera(config) {
         const camera = new OnvifCamera(config, this.config);
+        
+        // Configurer le callback pour les événements de cette caméra
+        camera.setEventCallback((cameraName, eventType, eventData) => {
+            this.handleCameraEvent(cameraName, eventType, eventData);
+        });
+        
         this.cameras.set(config.name, camera);
+        // Initialiser l'état de reconnexion pour cette caméra
+        this.reconnectState.set(config.name, { attempts: 0, timer: null, lastError: null });
         logger.info(`Caméra ajoutée: ${config.name}`);
         return camera;
     }
@@ -18,6 +29,7 @@ class OnvifManager {
     removeCamera(name) {
         const camera = this.cameras.get(name);
         if (camera) {
+            this.cancelReconnection(name);
             camera.disconnect();
             this.cameras.delete(name);
             logger.info(`Caméra supprimée: ${name}`);
@@ -42,8 +54,11 @@ class OnvifManager {
             const camera = Array.from(this.cameras.values())[index];
             if (result.status === 'fulfilled' && result.value) {
                 logger.info(`Connexion réussie: ${camera.name}`);
+                this.resetReconnection(camera.name);
             } else {
                 logger.error(`Échec de connexion: ${camera.name} - ${result.reason || 'Raison inconnue'}`);
+                // Programmer une reconnexion avec backoff + jitter
+                this.scheduleReconnection(camera.name, result.reason || new Error('Connexion initiale échouée'));
             }
         });
 
@@ -53,33 +68,136 @@ class OnvifManager {
     async connectCamera(name) {
         const camera = this.cameras.get(name);
         if (camera) {
-            return await camera.connect();
+            const ok = await camera.connect();
+            if (ok) {
+                this.resetReconnection(name);
+            } else {
+                this.scheduleReconnection(name, new Error('Échec de connexion'));
+            }
+            return ok;
         }
         return false;
     }
 
-    // ✅ Amélioration : tentative de reconnexion automatique
-    async attemptReconnection(camera, maxRetries = 3) {
-        // ✅ AJOUT : Vérifier si déjà connecté
-        if (camera.isConnected) {
-            logger.debug(`Caméra ${camera.name} déjà connectée, reconnexion annulée`);
-            return true;
+    // =========================
+    // Reconnexion avec backoff + jitter
+    // =========================
+
+    getReconnectConfig() {
+        const cfg = this.config;
+        // Valeurs exprimées en secondes dans la config (sans rétrocompatibilité ms)
+        const baseDelaySec = cfg ? cfg.get('network.reconnect.base_delay', 1) : 1;
+        const maxDelaySec = cfg ? cfg.get('network.reconnect.max_delay', 30) : 30;
+        const multiplier = cfg ? cfg.get('network.reconnect.multiplier', 2.0) : 2.0;
+        const maxRetries = cfg ? cfg.get('network.reconnect.max_retries', 0) : 0;
+        const jitter = cfg ? cfg.get('network.reconnect.jitter', 'full') : 'full';
+
+        return {
+            baseDelayMs: baseDelaySec * 1000,
+            maxDelayMs: maxDelaySec * 1000,
+            multiplier,
+            maxRetries,
+            jitter
+        };
+    }
+
+    computeDelayMs(attempt) {
+        const { baseDelayMs, maxDelayMs, multiplier, jitter } = this.getReconnectConfig();
+        const exp = Math.min(maxDelayMs, Math.floor(baseDelayMs * Math.pow(multiplier, Math.max(0, attempt))));
+        if (jitter === 'none') return exp;
+        // Full jitter: Uniform[0, exp]
+        return Math.floor(Math.random() * (exp + 1));
+    }
+
+    scheduleReconnection(name, lastError = null) {
+        const camera = this.cameras.get(name);
+        if (!camera) return;
+
+        const state = this.reconnectState.get(name) || { attempts: 0, timer: null, lastError: null };
+
+        // Si déjà connecté ou connexion en cours, ne rien programmer
+        if (camera.isConnected || camera.isConnecting) {
+            return;
         }
 
-        if (camera.isConnecting) {
-            logger.debug(`Reconnexion déjà en cours pour ${camera.name}`);
-            return false;
+        // Ne pas programmer si un timer existe déjà
+        if (state.timer) {
+            return;
         }
 
-        // Tentative de reconnexion
-        const success = await camera.connect();
-        if (success) {
-            logger.info(`✅ Reconnexion réussie pour ${camera.name}`);
-            return true;
-        } else {
-            logger.warn(`Tentative ${attempt} échouée pour ${camera.name}:`, error.message);
+        // Respect du nombre max de tentatives si configuré
+        const { maxRetries } = this.getReconnectConfig();
+        if (maxRetries > 0 && state.attempts >= maxRetries) {
+            logger.error(`❌ Reconnexion abandonnée pour ${name} après ${state.attempts} tentatives`);
+            return;
         }
-        logger.error(`❌ Reconnexion impossible pour ${camera.name} après ${maxRetries} tentatives`);
+
+        const delay = this.computeDelayMs(state.attempts);
+
+        logger.warn(`Caméra ${name} déconnectée, tentative de reconnexion dans ${delay}ms (essai #${state.attempts + 1})`);
+        const timer = setTimeout(async () => {
+            // Marquer le timer comme consommé
+            const st = this.reconnectState.get(name) || { attempts: 0 };
+            this.reconnectState.set(name, { ...st, timer: null });
+
+            try {
+                const ok = await camera.connect();
+                if (ok) {
+                    logger.info(`✅ Reconnexion réussie pour ${name} après ${st.attempts + 1} tentative(s)`);
+                    this.resetReconnection(name);
+                } else {
+                    const newAttempts = (st.attempts || 0) + 1;
+                    this.reconnectState.set(name, { attempts: newAttempts, timer: null, lastError });
+                    this.scheduleReconnection(name, lastError);
+                }
+            } catch (err) {
+                const newAttempts = (st.attempts || 0) + 1;
+                this.reconnectState.set(name, { attempts: newAttempts, timer: null, lastError: err });
+                this.scheduleReconnection(name, err);
+            }
+        }, delay);
+
+        this.reconnectState.set(name, { ...state, timer, lastError });
+    }
+
+    cancelReconnection(name) {
+        const state = this.reconnectState.get(name);
+        if (state && state.timer) {
+            clearTimeout(state.timer);
+            this.reconnectState.set(name, { ...state, timer: null });
+        }
+    }
+
+    resetReconnection(name) {
+        const state = this.reconnectState.get(name);
+        if (state && state.timer) {
+            clearTimeout(state.timer);
+        }
+        this.reconnectState.set(name, { attempts: 0, timer: null, lastError: null });
+    }
+
+    // Méthode de compatibilité: tentative immédiate (maxRetries fois), puis planification si échec
+    async attemptReconnection(cameraOrName, maxRetries = 1) {
+        const camera = typeof cameraOrName === 'string' ? this.cameras.get(cameraOrName) : cameraOrName;
+        if (!camera) return false;
+
+        if (camera.isConnected) return true;
+        if (camera.isConnecting) return false;
+
+        let lastErr = null;
+        for (let i = 0; i < Math.max(1, maxRetries); i++) {
+            try {
+                const ok = await camera.connect();
+                if (ok) {
+                    this.resetReconnection(camera.name);
+                    return true;
+                }
+            } catch (e) {
+                lastErr = e;
+            }
+        }
+        // Programmer la suite des tentatives en arrière-plan
+        this.scheduleReconnection(camera.name, lastErr || new Error('Échec de reconnexion'));
         return false;
     }
 
@@ -197,43 +315,6 @@ class OnvifManager {
         }
     }
 
-    // // Découverte automatique des caméras ONVIF
-    // async discoverCameras(timeout = 5000) {
-    //     try {
-    //         logger.info('Recherche de caméras ONVIF sur le réseau...');
-
-    //         const onvif = require('onvif');
-    //         const devices = await new Promise((resolve, reject) => {
-    //             const foundDevices = [];
-
-    //             onvif.Discovery.on('device', (cam, rinfo, xml) => {
-    //                 foundDevices.push({
-    //                     address: rinfo.address,
-    //                     port: 80,
-    //                     name: `Camera_${rinfo.address}`,
-    //                     xaddr: cam.xaddrs ? cam.xaddrs[0] : `http://${rinfo.address}/onvif/device_service`
-    //                 });
-    //             });
-
-    //             onvif.Discovery.on('error', (error) => {
-    //                 logger.warn('Erreur durant la découverte:', error);
-    //             });
-
-    //             onvif.Discovery.probe();
-
-    //             setTimeout(() => {
-    //                 resolve(foundDevices);
-    //             }, timeout);
-    //         });
-
-    //         logger.info(`${devices.length} caméras ONVIF découvertes`);
-    //         return devices;
-
-    //     } catch (error) {
-    //         logger.error('Erreur lors de la découverte des caméras:', error);
-    //         return [];
-    //     }
-    // }
 
     // Démarrer la surveillance périodique des statuts
     startStatusMonitoring(intervalMs = 30000, onStatusUpdate = null) {
@@ -248,11 +329,8 @@ class OnvifManager {
                 // ✅ Amélioration : reconnexion seulement des caméras déconnectées
                 for (const [name, camera] of this.cameras) {
                     if (!camera.isConnected && !camera.isConnecting) {
-                        logger.warn(`Caméra ${name} déconnectée, tentative de reconnexion...`);
-                        // Reconnexion en arrière-plan sans bloquer
-                        this.attemptReconnection(camera, 1).catch(error => {
-                            logger.error(`Échec de reconnexion pour ${name}:`, error);
-                        });
+                        // Laisser le scheduler gérer le backoff + jitter
+                        this.scheduleReconnection(name);
                     }
                 }
                 
@@ -279,10 +357,118 @@ class OnvifManager {
 
     disconnectAllCameras() {
         this.cameras.forEach(camera => {
+            this.cancelReconnection(camera.name);
             camera.disconnect();
         });
         this.stopStatusMonitoring();
         logger.info('Toutes les caméras ont été déconnectées');
+    }
+
+    // Arrêt propre: désabonner événements, annuler timers reconnexion, vider maps
+    async shutdown() {
+        logger.info('Arrêt propre OnvifManager en cours...');
+        // Stop interval de statut
+        this.stopStatusMonitoring();
+        // Désabonner tous les événements
+        await this.unsubscribeAllFromEvents();
+        // Annuler toutes les reconnexions
+        for (const [name] of this.cameras) {
+            this.cancelReconnection(name);
+        }
+        // Déconnecter toutes les caméras
+        this.cameras.forEach(camera => camera.disconnect());
+        // Nettoyage des structures
+        this.cameras.clear();
+        this.reconnectState.clear();
+        this.eventCallbacks.clear();
+        logger.info('OnvifManager arrêté proprement');
+    }
+
+    /**
+     * Enregistrer un callback pour un type d'événement spécifique
+     * @param {string} eventType - Type d'événement (motion, tamper, etc.)
+     * @param {function} callback - Fonction callback (cameraName, eventData)
+     */
+    onEvent(eventType, callback) {
+        if (!this.eventCallbacks.has(eventType)) {
+            this.eventCallbacks.set(eventType, []);
+        }
+        this.eventCallbacks.get(eventType).push(callback);
+        logger.debug(`Callback enregistré pour les événements de type: ${eventType}`);
+    }
+
+    /**
+     * Gérer un événement reçu d'une caméra
+     */
+    handleCameraEvent(cameraName, eventType, eventData) {
+        logger.info(`📡 Événement ${eventType} reçu de ${cameraName}:`, eventData);
+
+        // Appeler tous les callbacks enregistrés pour ce type d'événement
+        const callbacks = this.eventCallbacks.get(eventType) || [];
+        callbacks.forEach(callback => {
+            try {
+                callback(cameraName, eventData);
+            } catch (error) {
+                logger.error(`Erreur lors de l'appel du callback pour ${eventType}:`, error);
+            }
+        });
+
+        // Appeler également les callbacks génériques (tous événements)
+        const allCallbacks = this.eventCallbacks.get('*') || [];
+        allCallbacks.forEach(callback => {
+            try {
+                callback(cameraName, eventType, eventData);
+            } catch (error) {
+                logger.error(`Erreur lors de l'appel du callback générique:`, error);
+            }
+        });
+    }
+
+    /**
+     * Souscrire aux événements pour toutes les caméras connectées
+     */
+    async subscribeAllToEvents() {
+        const subscriptionPromises = Array.from(this.cameras.values()).map(async camera => {
+            if (camera.isConnected) {
+                return await camera.subscribeToEvents();
+            }
+            return false;
+        });
+
+        const results = await Promise.allSettled(subscriptionPromises);
+        
+        const successCount = results.filter(r => r.status === 'fulfilled' && r.value === true).length;
+        logger.info(`✅ ${successCount}/${this.cameras.size} caméra(s) abonnée(s) aux événements`);
+        
+        return results;
+    }
+
+    // Publier un état initial OFF retain pour les événements supportés (motion, tamper, people, vehicle, pet)
+    publishInitialEventStates(mqttManager) {
+        if (!mqttManager || !mqttManager.isConnected) return;
+        const eventTypes = ['motion','tamper','people','vehicle','pet'];
+        this.cameras.forEach(camera => {
+            const cameraId = camera.name.toLowerCase().replace(/\s+/g, '_');
+            eventTypes.forEach(type => {
+                mqttManager.publishRaw(
+                    `${mqttManager.baseTopic}/${cameraId}/event/${type}`,
+                    'OFF',
+                    { retain: true, qos: 1 }
+                );
+            });
+        });
+    }
+
+    /**
+     * Se désabonner des événements pour toutes les caméras
+     */
+    async unsubscribeAllFromEvents() {
+        const unsubscriptionPromises = Array.from(this.cameras.values()).map(async camera => {
+            return await camera.unsubscribeFromEvents();
+        });
+
+        await Promise.allSettled(unsubscriptionPromises);
+        logger.info('Toutes les caméras ont été désabonnées des événements');
     }
 }
 
