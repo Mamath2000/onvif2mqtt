@@ -126,7 +126,7 @@ class HADiscoveryHelper {
                     unique_id: `${identifier}_preset_${preset}`,
                     name: `Preset ${key}`,
                     command_topic: `${stateTopic}/goPreset`,
-                    payload_press: preset,
+                    payload_press: key,
                     has_entity_name: true
                 };
             });
