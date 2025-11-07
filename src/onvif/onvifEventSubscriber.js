@@ -11,17 +11,24 @@ class OnvifEventSubscriber {
         this.subscription = null;
         this.pullInterval = null;
         this.isSubscribed = false;
-        this.pullTimeout = 60000; // 60 secondes
-        this.pullIntervalMs = 1000; // 1 seconde
-        // Watchdog: resubscribe si aucun event pendant X temps
+        this.pullTimeout = 60000;
+        this.pullIntervalMs = 1000;
         this.watchdogInterval = null;
         this.lastEventAt = null;
         this.isResubscribing = false;
-        // Configurable via camera.globalConfig
+
         const cfg = camera && camera.globalConfig;
-    // Watchdog intervals (secondes -> ms)
-    this.watchdogCheckMs = cfg ? cfg.getDurationMs('events.watchdog.check_interval', 30) : 30000;
-    this.noEventTimeoutMs = cfg ? cfg.getDurationMs('events.watchdog.no_event_timeout', 120) : 120000;
+        // Watchdog intervals
+        this.watchdogCheckMs = cfg ? cfg.getDurationMs('events.watchdog.check_interval', 30) : 30000;
+        this.noEventTimeoutMs = cfg ? cfg.getDurationMs('events.watchdog.no_event_timeout', 120) : 120000;
+
+        // ✅ Résoudre une fois la liste des types autorisés
+        const configuredTypes = (camera && camera.eventTypes) 
+            ? camera.eventTypes 
+            : (cfg ? cfg.get('events.default_event_types', 'all') : 'all');
+
+        this.allowedEventTypes = this.parseEventTypes(configuredTypes); // null => all
+        logger.debug(`Types d'événements autorisés pour ${camera?.name}: ${this.allowedEventTypes ? this.allowedEventTypes.join(', ') : 'all'}`);
     }
 
     /**
@@ -113,6 +120,10 @@ class OnvifEventSubscriber {
             const eventType = this.determineEventType(camMessage);
 
             if (eventType) {
+                // Filtrage par configuration: ignorer les événements non autorisés pour cette caméra
+                if (!this.isEventAllowed(eventType)) {
+                    return;
+                }
                 // Événement IA TP-Link : décomposer en événements spécifiques
                 if (eventType === 'smart_event') {
                     this.processTPLinkSmartEvent(eventData);
@@ -149,25 +160,21 @@ class OnvifEventSubscriber {
      */
     processTPLinkSmartEvent(eventData) {
         logger.debug(`Événement IA TP-Link reçu pour ${this.camera.name}:`, eventData);
-        
-        if (!this.eventCallback) {
-            return;
-        }
+        if (!this.eventCallback) return;
 
-        // Décomposer l'événement en types spécifiques
-        if (eventData.IsPeople !== undefined) {
+        if (eventData.IsPeople !== undefined && this.isEventAllowed('people')) {
             const peopleState = eventData.IsPeople === 'true' || eventData.IsPeople === true;
             logger.debug(`  → Détection de personne: ${peopleState}`);
             this.eventCallback(this.camera.name, 'people', { State: peopleState, IsPeople: peopleState });
         }
-        
-        if (eventData.IsVehicle !== undefined) {
+
+        if (eventData.IsVehicle !== undefined && this.isEventAllowed('vehicle')) {
             const vehicleState = eventData.IsVehicle === 'true' || eventData.IsVehicle === true;
             logger.debug(`  → Détection de véhicule: ${vehicleState}`);
             this.eventCallback(this.camera.name, 'vehicle', { State: vehicleState, IsVehicle: vehicleState });
         }
-        
-        if (eventData.IsPet !== undefined) {
+
+        if (eventData.IsPet !== undefined && this.isEventAllowed('pet')) {
             const petState = eventData.IsPet === 'true' || eventData.IsPet === true;
             logger.debug(`  → Détection d'animal: ${petState}`);
             this.eventCallback(this.camera.name, 'pet', { State: petState, IsPet: petState });
@@ -272,6 +279,26 @@ class OnvifEventSubscriber {
      */
     isActive() {
         return this.isSubscribed && this.subscription !== null;
+    }
+
+    // Déterminer si un type d'événement est autorisé pour cette caméra selon la configuration
+    isEventAllowed(eventType) {
+        try {
+            if (this.allowedEventTypes === null) return true; // 'all'
+            return this.allowedEventTypes.includes(eventType);
+        } catch {
+            return true;
+        }
+    }
+
+    parseEventTypes(types) {
+        if (!types) return null; // considérer comme 'all'
+        if (Array.isArray(types)) {
+            return types.map(t => String(t).trim()).filter(Boolean);
+        }
+        const s = String(types).trim();
+        if (s.length === 0 || s.toLowerCase() === 'all') return null; // 'all'
+        return s.split(',').map(t => t.trim()).filter(Boolean);
     }
 
     // =========================
