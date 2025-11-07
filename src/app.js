@@ -228,11 +228,6 @@ class OnvifMqttGateway {
                     commandResult = await this.onvifManager.gotoCameraPreset(camera.name, presetId);
                     break;
 
-                case 'stop':
-                    logger.info(`PTZ Stop pour ${camera.name}`);
-                    commandResult = await this.onvifManager.stopCameraPTZ(camera.name);
-                    break;
-
                 default:
                     logger.warn(`Commande PTZ non reconnue: ${cmd}`);
                     return;
@@ -299,10 +294,6 @@ class OnvifMqttGateway {
                             logger.warn(`Direction de zoom invalide: ${data.direction}`);
                             return;
                     }
-                    break;
-
-                case 'stop':
-                    result = await camera.ptzStop();
                     break;
 
                 case 'preset':

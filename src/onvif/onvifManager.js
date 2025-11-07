@@ -271,14 +271,6 @@ class OnvifManager {
         }
     }
 
-    async stopCameraPTZ(name) {
-        const camera = this.cameras.get(name);
-        if (camera && camera.isConnected) {
-            return await camera.ptzStop();
-        }
-        return false;
-    }
-
     async getCameraPresets(name) {
         const camera = this.cameras.get(name);
         if (!camera) {

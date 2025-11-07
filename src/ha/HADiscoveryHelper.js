@@ -122,12 +122,14 @@ class HADiscoveryHelper {
             };
             Object.keys(cameraStatus.presets).forEach(key => {
                 const preset = cameraStatus.presets[key];
-                cameraPayload.components[`${identifier}_preset_${preset}`] = {
+                const unique_id= `${identifier}_preset_${key}`;
+                const object_id = `${identifier}_preset_${preset}`.toLowerCase().replace(/[ \-]+/g, '_');
+                cameraPayload.components[unique_id] = {
                     platform: 'button',
                     // default_entity_id : `${identifier}_preset_${key}`,
-                    object_id : `${identifier}_preset_${key}`,
-                    unique_id: `${identifier}_preset_${preset}`,
-                    name: `Preset ${key}`,
+                    unique_id: unique_id,
+                    object_id : object_id,
+                    name: `${preset}`,
                     command_topic: `${stateTopic}/goPreset`,
                     payload_press: key,
                     has_entity_name: true
@@ -139,8 +141,7 @@ class HADiscoveryHelper {
                 { key: 'up', name: 'Up', mode: 'tilt' },
                 { key: 'down', name: 'Down', mode: 'tilt' },
                 { key: 'left', name: 'Left', mode: 'pan' },
-                { key: 'right', name: 'Right', mode: 'pan' },
-                { key: 'stop', name: 'Stop', mode: 'both' }
+                { key: 'right', name: 'Right', mode: 'pan' }
             ];
             movements.forEach(move => {
                 // Vérifier si on doit générer ce bouton selon les modes pan/tilt
@@ -148,8 +149,6 @@ class HADiscoveryHelper {
                 if (move.mode === 'pan' && cameraStatus.panMode === 'hide') {
                     shouldGenerate = false;
                 } else if (move.mode === 'tilt' && cameraStatus.tiltMode === 'hide') {
-                    shouldGenerate = false;
-                } else if (move.mode === 'both' && cameraStatus.panMode === 'hide' && cameraStatus.tiltMode === 'hide') {
                     shouldGenerate = false;
                 }
 

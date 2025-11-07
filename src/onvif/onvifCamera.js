@@ -253,36 +253,6 @@ class OnvifCamera {
         }
     }
 
-    // ✅ Corriger aussi ptzStop
-    async ptzStop(profileIndex = 0) {
-        try {
-            if (!this.isConnected || !this.device) {
-                logger.warn(`Caméra ${this.name} non connectée, impossible d'arrêter PTZ`);
-                return false;
-            }
-
-            if (this.profiles.length === 0) {
-                logger.warn(`Aucun profil disponible pour ${this.name}`);
-                return false;
-            }
-
-            const profile = this.profiles[profileIndex];
-
-            await new Promise((resolve, reject) => {
-                this.device.stop({}, (err) => {
-                    if (err) reject(err);
-                    else resolve();
-                });
-            });
-
-            logger.debug(`Arrêt PTZ réussi pour ${this.name}`);
-            return true;
-        } catch (error) {
-            logger.error(`Erreur lors de l'arrêt PTZ pour ${this.name}:`, error);
-            return false;
-        }
-    }
-
     // Presets PTZ
     async fetchPtzPresets(profileIndex = 0) {
         try {

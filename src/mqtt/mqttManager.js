@@ -273,11 +273,6 @@ class MqttManager {
                             } else {
                                 logger.warn(`Direction de zoom invalide: ${direction}`);
                             }
-                        } else if (message === 'stop') {
-                            this.emit('ptzCommand', {
-                                cameraId,
-                                command: 'stop'
-                            });
                         } else {
                             logger.warn(`Action PTZ inconnue: ${action}`);
                         }
