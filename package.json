@@ -1,6 +1,6 @@
 {
   "name": "onvif2mqtt",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Gateway MQTT ↔ ONVIF pour contrôler les caméras ONVIF via MQTT",
   "main": "src/app.js",
   "scripts": {
