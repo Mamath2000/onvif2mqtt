@@ -35,8 +35,7 @@ class HADiscoveryHelper {
                 components: {
                     onvif2mqtt_state: {
                         platform: 'binary_sensor',
-                        // default_entity_id : 'onvif2mqtt_state',
-                        object_id : 'onvif2mqtt_state',
+                        default_entity_id : 'binary_sensor.onvif2mqtt_state',
                         unique_id: 'onvif2mqtt_state',
                         name: 'State',
                         force_update: true,
@@ -103,8 +102,7 @@ class HADiscoveryHelper {
                 components: {
                     [`${identifier}_state`]: {
                         platform: 'binary_sensor',
-                        // default_entity_id : `${identifier}_state`,
-                        object_id : `${identifier}_state`,
+                        default_entity_id : `binary_sensor.${identifier}_state`,
                         unique_id: `${identifier}_state`,
                         availability: [{
                             topic: `${this.baseTopic}/lwt`,
@@ -126,9 +124,8 @@ class HADiscoveryHelper {
                 const object_id = `${identifier}_preset_${preset}`.toLowerCase().replace(/[ \-]+/g, '_');
                 cameraPayload.components[unique_id] = {
                     platform: 'button',
-                    // default_entity_id : `${identifier}_preset_${key}`,
+                    default_entity_id : `button.${identifier}_preset_${key}`,
                     unique_id: unique_id,
-                    object_id : object_id,
                     name: `${preset}`,
                     command_topic: `${stateTopic}/goPreset`,
                     payload_press: key,
@@ -155,8 +152,7 @@ class HADiscoveryHelper {
                 if (shouldGenerate) {
                     cameraPayload.components[`${identifier}_move_${move.key}`] = {
                         platform: 'button',
-                        // default_entity_id : `${identifier}_move_${move.key}`,
-                        object_id : `${identifier}_move_${move.key}`,
+                        default_entity_id : `button.${identifier}_move_${move.key}`,
                         unique_id: `${identifier}_move_${move.key}`,
                         name: `Move ${move.name}`,
                         command_topic: `${stateTopic}/cmd`,
@@ -175,8 +171,7 @@ class HADiscoveryHelper {
                 zooms.forEach(zoom => {
                     cameraPayload.components[`${identifier}_${zoom.key}`] = {
                         platform: 'button',
-                        // default_entity_id : `${identifier}_${zoom.key}`,
-                        object_id : `${identifier}_${zoom.key}`,
+                        default_entity_id : `button.${identifier}_${zoom.key}`,
                         unique_id: `${identifier}_${zoom.key}`,
                         name: zoom.name,
                         command_topic: `${stateTopic}/cmd`,
@@ -190,8 +185,7 @@ class HADiscoveryHelper {
             eventTypes.forEach(eventType => {
                 cameraPayload.components[`${identifier}_event_${eventType}`] = {
                     platform: 'binary_sensor',
-                    // default_entity_id : `${identifier}_event_${eventType}`,
-                    object_id : `${identifier}_event_${eventType}`,
+                    default_entity_id : `binary_sensor.${identifier}_event_${eventType}`,
                     unique_id: `${identifier}_event_${eventType}`,
                     name: `Event ${eventType}`,
                     state_topic: `${stateTopic}/event/${eventType}`,
