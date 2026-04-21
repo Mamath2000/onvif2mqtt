@@ -121,10 +121,10 @@ class HADiscoveryHelper {
             Object.keys(cameraStatus.presets).forEach(key => {
                 const preset = cameraStatus.presets[key];
                 const unique_id= `${identifier}_preset_${key}`;
-                const object_id = `${identifier}_preset_${preset}`.toLowerCase().replace(/[ \-]+/g, '_');
+                const object_id = `${identifier}_${preset}`.toLowerCase().replace(/[ \-]+/g, '_');
                 cameraPayload.components[unique_id] = {
                     platform: 'button',
-                    default_entity_id : `button.${identifier}_preset_${key}`,
+                    default_entity_id : `button.${object_id}`,
                     unique_id: unique_id,
                     name: `${preset}`,
                     command_topic: `${stateTopic}/goPreset`,
