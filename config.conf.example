@@ -80,12 +80,6 @@ enabled = true
 # Peut être surchargé au niveau de chaque caméra
 default_event_types = motion, tamper, people, vehicle, pet
 
-# Watchdog d'événements (réabonnement automatique si silence prolongé)
-# Intervalle de vérification du watchdog (EN SECONDES)
-watchdog.check_interval = 30
-# Durée maximale sans événement avant réabonnement (EN SECONDES)
-watchdog.no_event_timeout = 120
-
 # Configuration des caméras
 # Format: [camera.nom_unique]
 # Remplacez "nom_unique" par un identifiant unique pour chaque caméra

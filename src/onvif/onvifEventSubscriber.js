@@ -13,14 +13,10 @@ class OnvifEventSubscriber {
         this.isSubscribed = false;
         this.pullTimeout = 60000;
         this.pullIntervalMs = 1000;
-        this.watchdogInterval = null;
-        this.lastEventAt = null;
         this.isResubscribing = false;
+        this.onEventsError = null;
 
         const cfg = camera && camera.globalConfig;
-        // Watchdog intervals
-        this.watchdogCheckMs = cfg ? cfg.getDurationMs('events.watchdog.check_interval', 30) : 30000;
-        this.noEventTimeoutMs = cfg ? cfg.getDurationMs('events.watchdog.no_event_timeout', 120) : 120000;
 
         // ✅ Résoudre une fois la liste des types autorisés
         const configuredTypes = (camera && camera.eventTypes) 
@@ -74,9 +70,10 @@ class OnvifEventSubscriber {
 
                 logger.info(`📡 Écoute des événements activée pour ${self.camera.name}`);
 
-                // Initialiser le watchdog
-                self.lastEventAt = Date.now();
-                self.startWatchdog();
+                // La bibliothèque ONVIF renouvelle elle-même la souscription (Renew)
+                // à chaque cycle de pull interne. On ne réagit qu'aux vrais échecs
+                // remontés par la lib, pas à une simple absence de détection.
+                self.watchEventsError();
             });
 
             return true;
@@ -99,9 +96,6 @@ class OnvifEventSubscriber {
             if (!camMessage || !camMessage.topic || !camMessage.message) {
                 return;
             }
-
-            // Marquer la réception pour le watchdog
-            this.lastEventAt = Date.now();
 
             const topic = camMessage.topic;
             const message = camMessage.message;
@@ -241,8 +235,12 @@ class OnvifEventSubscriber {
      */
     async unsubscribe() {
         if (this.camera && this.camera.device) {
-            // Retirer l'écouteur d'événements
+            // Retirer les écouteurs d'événements
             this.camera.device.removeAllListeners('event');
+            if (this.onEventsError) {
+                this.camera.device.removeListener('eventsError', this.onEventsError);
+                this.onEventsError = null;
+            }
         }
 
         if (this.subscription) {
@@ -271,7 +269,6 @@ class OnvifEventSubscriber {
         }
 
         this.isSubscribed = false;
-        this.stopWatchdog();
     }
 
     /**
@@ -302,51 +299,48 @@ class OnvifEventSubscriber {
     }
 
     // =========================
-    // Watchdog (resubscribe si silence prolongé)
+    // Réabonnement sur échec réel (pas sur simple silence)
     // =========================
-    startWatchdog() {
-        if (this.watchdogInterval) return;
-        if (this.noEventTimeoutMs <= 0) return; // désactivé si <= 0
+    // La lib `onvif` gère un long-poll + Renew SOAP en interne à chaque cycle
+    // (voir node_modules/onvif/lib/events.js: _eventPull -> renew()), donc
+    // l'abonnement reste vivant tant qu'aucune erreur n'est remontée, même
+    // sans détection. Les erreurs réseau transitoires (ECONNREFUSED, ECONNRESET,
+    // ETIMEDOUT, ENETUNREACH) sont déjà retentées par la lib elle-même
+    // (_restartEventRequest) ; on ne force un réabonnement complet que pour
+    // les autres erreurs, qui font mourir la boucle interne de pull.
+    watchEventsError() {
+        if (this.onEventsError || !this.camera || !this.camera.device) return;
 
-        this.watchdogInterval = setInterval(async () => {
-            try {
-                if (!this.camera || !this.camera.isConnected || !this.isSubscribed) {
-                    return; // la reconnexion réseau gérée ailleurs
-                }
-                const now = Date.now();
-                const last = this.lastEventAt || now;
-                const silentFor = now - last;
-                if (silentFor > this.noEventTimeoutMs) {
-                    if (this.isResubscribing) return;
-                    this.isResubscribing = true;
-                    logger.warn(`🔄 Aucun événement pour ${Math.round(silentFor/1000)}s sur ${this.camera.name}, réabonnement au flux d'événements...`);
-                    try {
-                        await this.unsubscribe();
-                        // petite pause pour éviter thrash
-                        await new Promise(r => setTimeout(r, 250));
-                        const ok = await this.subscribe();
-                        if (ok) {
-                            logger.info(`✅ Réabonnement aux événements réussi pour ${this.camera.name}`);
-                        } else {
-                            logger.warn(`⚠️ Réabonnement aux événements échoué pour ${this.camera.name}`);
-                        }
-                    } catch (e) {
-                        logger.error(`Erreur lors du réabonnement des événements pour ${this.camera.name}:`, e);
-                    } finally {
-                        this.isResubscribing = false;
-                    }
-                }
-            } catch (err) {
-                logger.debug(`Watchdog événements erreur pour ${this.camera && this.camera.name}:`, err.message || err);
+        const retryableCodes = ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENETUNREACH'];
+
+        this.onEventsError = async (error) => {
+            const code = error && error.code;
+            if (retryableCodes.includes(code)) {
+                logger.debug(`Erreur événements transitoire pour ${this.camera.name} (${code}), la lib ONVIF gère la reprise`);
+                return;
             }
-        }, this.watchdogCheckMs);
-    }
 
-    stopWatchdog() {
-        if (this.watchdogInterval) {
-            clearInterval(this.watchdogInterval);
-            this.watchdogInterval = null;
-        }
+            if (this.isResubscribing) return;
+            this.isResubscribing = true;
+            logger.warn(`🔄 Échec du flux d'événements ONVIF pour ${this.camera.name} (${error && error.message || error}), réabonnement...`);
+            try {
+                await this.unsubscribe();
+                // petite pause pour éviter thrash
+                await new Promise(r => setTimeout(r, 250));
+                const ok = await this.subscribe();
+                if (ok) {
+                    logger.info(`✅ Réabonnement aux événements réussi pour ${this.camera.name}`);
+                } else {
+                    logger.warn(`⚠️ Réabonnement aux événements échoué pour ${this.camera.name}`);
+                }
+            } catch (e) {
+                logger.error(`Erreur lors du réabonnement des événements pour ${this.camera.name}:`, e);
+            } finally {
+                this.isResubscribing = false;
+            }
+        };
+
+        this.camera.device.on('eventsError', this.onEventsError);
     }
 }
 
