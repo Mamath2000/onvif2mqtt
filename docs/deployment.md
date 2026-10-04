@@ -75,11 +75,7 @@ services:
       - onvif-network
     depends_on:
       - mosquitto
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+    # Pas de healthcheck Docker : la santé est publiée sur MQTT (<base_topic>/lwt)
 
   mosquitto:
     image: eclipse-mosquitto:2
@@ -264,17 +260,29 @@ WantedBy=multi-user.target
 
 ## Monitoring et maintenance
 
+### Santé du service
+
+L'application n'expose pas d'endpoint HTTP ni de healthcheck Docker : sa santé est publiée sur MQTT.
+
+- `<base_topic>/lwt` (retained) : `online` à la connexion, `offline` publié par le broker (LWT) si le client
+  disparaît. Keepalive MQTT de 60 s : une connexion morte est détectée en ~90 s.
+- `<base_topic>/<camera_id>/lwt` (retained) : `online` / `offline` par caméra.
+
+Dans Home Assistant, la découverte MQTT crée `binary_sensor.onvif2mqtt_state` (classe `connectivity`) sur le premier topic.
+
 ### Script de monitoring
 
 ```bash
 #!/bin/bash
 # monitor.sh
 
-HEALTH_URL="http://localhost:3000/health"
+BROKER="localhost"
+TOPIC="onvif2mqtt/lwt"
 LOG_FILE="/var/log/onvif-controller-monitor.log"
 
 check_health() {
-    if curl -s "$HEALTH_URL" | grep -q '"status":"OK"'; then
+    # Lit la valeur retained du LWT (attend 5 s au plus)
+    if [ "$(mosquitto_sub -h "$BROKER" -t "$TOPIC" -C 1 -W 5 2>/dev/null)" = "online" ]; then
         echo "$(date): Service OK" >> "$LOG_FILE"
         return 0
     else

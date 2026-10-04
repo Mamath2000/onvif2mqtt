@@ -59,6 +59,4 @@ ENTRYPOINT ["dumb-init", "--"]
 # Commande par défaut
 CMD ["node", "src/app.js"]
 
-# Health check pour vérifier que l'application fonctionne
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD node -e "console.log('Health check OK')" || exit 1
+# No Docker healthcheck: health is published on MQTT <base_topic>/lwt (retained, LWT)

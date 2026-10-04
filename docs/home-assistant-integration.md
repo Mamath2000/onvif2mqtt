@@ -232,38 +232,24 @@ cards:
 
 ## Capteurs personnalisés
 
-Créez des capteurs pour surveiller l'état de l'application :
+La santé de l'application est publiée sur MQTT (pas d'endpoint HTTP) et la découverte crée automatiquement :
+
+- `binary_sensor.onvif2mqtt_state` (classe `connectivity`) : état de la passerelle, sur `<base_topic>/lwt`
+  (`online` / `offline`, retained, LWT du broker si le client disparaît) ;
+- `binary_sensor.<camera_id>_state` (classe `connectivity`) par caméra, sur `<base_topic>/<camera_id>/lwt`,
+  utilisé aussi comme disponibilité de ses entités.
+
+Aucun capteur à déclarer à la main. Pour un compteur de caméras connectées, un template suffit :
 
 ```yaml
-# sensors.yaml
-- platform: rest
-  name: "ONVIF Controller Status"
-  resource: "http://localhost:3000/health"
-  method: GET
-  value_template: "{{ value_json.status }}"
-  json_attributes:
-    - timestamp
-    - mqtt
-    - cameras
-  scan_interval: 60
-
-- platform: template
-  sensors:
-    onvif_cameras_count:
-      friendly_name: "Nombre de caméras connectées"
-      value_template: "{{ state_attr('sensor.onvif_controller_status', 'cameras') | int }}"
-      unit_of_measurement: "caméras"
-      icon: mdi:camera-outline
-      
-    onvif_mqtt_status:
-      friendly_name: "Statut MQTT ONVIF"
-      value_template: >
-        {% if state_attr('sensor.onvif_controller_status', 'mqtt') %}
-          Connecté
-        {% else %}
-          Déconnecté
-        {% endif %}
-      icon: mdi:mqtt
+template:
+  - sensor:
+      - name: "Caméras ONVIF connectées"
+        unit_of_measurement: "caméras"
+        icon: mdi:camera-outline
+        state: >
+          {{ ['binary_sensor.camera_salon_state', 'binary_sensor.camera_jardin_state']
+             | select('is_state', 'on') | list | count }}
 ```
 
 ## Notifications et alertes
@@ -274,8 +260,8 @@ Créez des capteurs pour surveiller l'état de l'application :
   alias: 'Alerte - Contrôleur ONVIF hors ligne'
   trigger:
     - platform: state
-      entity_id: sensor.onvif_controller_status
-      to: 'unavailable'
+      entity_id: binary_sensor.onvif2mqtt_state
+      to: 'off'
       for: '00:05:00'
   action:
     - service: notify.admin

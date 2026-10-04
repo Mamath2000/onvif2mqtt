@@ -25,7 +25,7 @@ class MqttManager {
                 clean: true,
                 reconnectPeriod: 5000,
                 connectTimeout: 30000,
-                keepalive: 300,
+                keepalive: 60,
                 will: {
                     topic: `${this.baseTopic}/lwt`,
                     payload: 'offline',
