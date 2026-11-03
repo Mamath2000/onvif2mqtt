@@ -8,8 +8,8 @@
 [mqtt]
 # URL du broker MQTT (format: mqtt://host:port ou mqtts://host:port pour SSL)
 broker_url = mqtt://localhost:1883
-# Authentification MQTT (laissez vide si pas d'authentification)
-username =
+# Authentification MQTT (sans authentification : définir MQTT_USERNAME= et MQTT_PASSWORD= vides dans .env)
+username = ${MQTT_USERNAME}
 password = ${MQTT_PASSWORD}
 # ID du client MQTT (sera suffixé automatiquement pour éviter les conflits)
 client_id = onvif-gateway
@@ -90,7 +90,7 @@ default_event_types = motion, tamper, people, vehicle, pet
 name = Caméra Salon
 host = 192.168.1.100
 port = 2020
-username = admin
+username = ${CAMERA_SALON_USERNAME}
 password = ${CAMERA_SALON_PASSWORD}
 # Types d'événements pour cette caméra (optionnel, utilise default_event_types si non spécifié)
 event_types = motion, people, vehicle, pet
@@ -105,7 +105,7 @@ zoom_mode = normal
 name = Caméra Jardin
 host = 192.168.1.101
 port = 2020
-username = admin
+username = ${CAMERA_JARDIN_USERNAME}
 password = ${CAMERA_JARDIN_PASSWORD}
 # Seulement détection de mouvement pour cette caméra
 event_types = motion

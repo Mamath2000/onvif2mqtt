@@ -98,20 +98,23 @@ networks:
 
 ### Secrets via variables d'environnement (`.env`)
 
-`config.conf` accepte des références `${VAR}` : elles sont remplacées au démarrage par la valeur de la variable d'environnement correspondante. Cela permet de ne plus stocker mots de passe MQTT / caméras en clair dans `config.conf` (versionné dans les repos de config).
+`config.conf` accepte des références `${VAR}` : elles sont remplacées au démarrage par la valeur de la variable d'environnement correspondante. Cela permet de ne plus stocker identifiants (username / password) MQTT et caméras en clair dans `config.conf` (versionné dans les repos de config).
 
 ```ini
 [mqtt]
+username = ${MQTT_USERNAME}
 password = ${MQTT_PASSWORD}
 
 [camera.salon]
-username = admin
+username = ${CAMERA_SALON_USERNAME}
 password = ${CAMERA_SALON_PASSWORD}
 ```
 
 ```bash
 # .env (gitignoré, à côté du docker-compose.yml)
+MQTT_USERNAME=...
 MQTT_PASSWORD=...
+CAMERA_SALON_USERNAME=...
 CAMERA_SALON_PASSWORD=...
 ```
 
