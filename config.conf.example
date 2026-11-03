@@ -2,13 +2,15 @@
 # Copiez ce fichier vers config.conf et modifiez selon vos besoins
 # Format: section.key = value
 # Les commentaires commencent par #
+# Secrets : utilisez ${NOM_VARIABLE} (lu dans l'environnement, ex. via .env / env_file).
+# Une variable non définie provoque une erreur au démarrage. Échappement : $${ donne un ${ littéral.
 
 [mqtt]
 # URL du broker MQTT (format: mqtt://host:port ou mqtts://host:port pour SSL)
 broker_url = mqtt://localhost:1883
 # Authentification MQTT (laissez vide si pas d'authentification)
-username = 
-password = 
+username =
+password = ${MQTT_PASSWORD}
 # ID du client MQTT (sera suffixé automatiquement pour éviter les conflits)
 client_id = onvif-gateway
 
@@ -89,7 +91,7 @@ name = Caméra Salon
 host = 192.168.1.100
 port = 2020
 username = admin
-password = votre_mot_de_passe
+password = ${CAMERA_SALON_PASSWORD}
 # Types d'événements pour cette caméra (optionnel, utilise default_event_types si non spécifié)
 event_types = motion, people, vehicle, pet
 # Mode Pan (mouvement horizontal) : hide, normal, inverted (défaut: normal)
@@ -104,7 +106,7 @@ name = Caméra Jardin
 host = 192.168.1.101
 port = 2020
 username = admin
-password = votre_mot_de_passe
+password = ${CAMERA_JARDIN_PASSWORD}
 # Seulement détection de mouvement pour cette caméra
 event_types = motion
 # Exemple : inverser le tilt car la caméra est montée à l'envers

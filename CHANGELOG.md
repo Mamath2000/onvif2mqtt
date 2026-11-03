@@ -5,6 +5,11 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Non publié]
+
+### Ajouté
+- `config.conf` : substitution des références `${VAR}` depuis l'environnement (erreur explicite si variable non définie, échappement `$${`), pour externaliser les secrets dans un `.env` (`env_file` dans les compose, `.env.example`)
+
 ## [1.0.0] - 2025-08-09
 
 ### Ajouté

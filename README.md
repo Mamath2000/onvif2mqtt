@@ -100,6 +100,8 @@ Le conteneur utilise le réseau de l'hôte (`network_mode: host`) pour accéder 
 
 **Important** : Assurez-vous que le fichier `config.conf` existe avant de lancer Docker.
 
+**Secrets** : `config.conf` accepte des références `${VAR}` (ex. `password = ${MQTT_PASSWORD}`) résolues depuis l'environnement ; les compose fournis chargent un fichier `.env` (`env_file`, modèle `.env.example`). Variable non définie = erreur au démarrage. Détails : [docs/deployment.md](docs/deployment.md#secrets-via-variables-denvironnement-env).
+
 ## Configuration
 
 L'application utilise maintenant un fichier de configuration `config.conf` au format INI pour une meilleure organisation et lisibilité.

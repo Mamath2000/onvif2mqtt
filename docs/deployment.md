@@ -96,6 +96,40 @@ networks:
     driver: bridge
 ```
 
+### Secrets via variables d'environnement (`.env`)
+
+`config.conf` accepte des références `${VAR}` : elles sont remplacées au démarrage par la valeur de la variable d'environnement correspondante. Cela permet de ne plus stocker mots de passe MQTT / caméras en clair dans `config.conf` (versionné dans les repos de config).
+
+```ini
+[mqtt]
+password = ${MQTT_PASSWORD}
+
+[camera.salon]
+username = admin
+password = ${CAMERA_SALON_PASSWORD}
+```
+
+```bash
+# .env (gitignoré, à côté du docker-compose.yml)
+MQTT_PASSWORD=...
+CAMERA_SALON_PASSWORD=...
+```
+
+```yaml
+# docker-compose.yml
+services:
+  onvif2mqtt:
+    env_file:
+      - .env
+```
+
+Règles :
+- Syntaxe `${NOM}` uniquement (`[A-Za-z_][A-Za-z0-9_]*`), pas de valeur par défaut `${NOM:-x}`. La substitution s'applique à toutes les valeurs, pas aux commentaires (`#`).
+- Variable **non définie** : l'application s'arrête au démarrage avec un message indiquant la variable, la section/clé et la ligne (la valeur n'est jamais loguée). Variable définie mais **vide** : substituée par une chaîne vide.
+- Échappement : `$${` produit un `${` littéral (mot de passe contenant `${`).
+- Hors Docker (systemd, `npm start`), les variables doivent être présentes dans l'environnement du process (ex. `EnvironmentFile=` côté systemd, ou `node --env-file=.env` avec Node ≥ 20.6).
+- Modèle fourni : `.env.example`.
+
 ### Configuration Mosquitto
 
 Créez le fichier `mosquitto/config/mosquitto.conf` :

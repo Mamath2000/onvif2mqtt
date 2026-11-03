@@ -11,6 +11,10 @@ services:
       - ./logs:/app/logs
       - ./config.conf:/app/config.conf:ro
 
+    # Secrets référencés par ${VAR} dans config.conf (fichier .env gitignoré)
+    env_file:
+      - .env
+
     # Variables d'environnement
     environment:
       - NODE_ENV=production

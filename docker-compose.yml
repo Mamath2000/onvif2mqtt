@@ -15,6 +15,10 @@ services:
       # Monter le fichier de configuration
       - ./config.conf:/app/config.conf:ro
     
+    # Secrets référencés par ${VAR} dans config.conf (fichier .env gitignoré)
+    env_file:
+      - .env
+
     # Réseau : utiliser le réseau de l'hôte pour accéder aux caméras locales
     network_mode: host
     

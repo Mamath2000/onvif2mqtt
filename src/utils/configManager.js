@@ -56,9 +56,36 @@ class ConfigManager {
                 const key = keyValueMatch[1].trim();
                 const value = keyValueMatch[2].trim();
                 
-                this.setConfigValue(currentSection, key, value);
+                this.setConfigValue(currentSection, key, this.expandEnvVars(value, currentSection, key, i + 1));
             }
         }
+    }
+
+    /**
+     * Substitue les références ${VAR} par la valeur de process.env.VAR.
+     * - Variable non définie : erreur explicite (variable, section, clé, ligne).
+     * - Variable définie mais vide : substituée par une chaîne vide.
+     * - `$${` est un échappement : produit le texte littéral `${`.
+     * La valeur d'une variable n'est jamais affichée dans les erreurs.
+     * @param {string} value - Valeur brute
+     * @param {string} section - Section courante (messages d'erreur)
+     * @param {string} key - Clé courante (messages d'erreur)
+     * @param {number} lineNumber - Numéro de ligne (messages d'erreur)
+     * @returns {string} - Valeur après substitution
+     */
+    expandEnvVars(value, section, key, lineNumber) {
+        return value.replace(/\$\$\{|\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, name) => {
+            if (match === '$${') {
+                return '${';
+            }
+            if (!(name in process.env)) {
+                throw new Error(
+                    `Variable d'environnement "${name}" non définie ` +
+                    `(référencée par [${section}] ${key}, ligne ${lineNumber} de ${this.configPath})`
+                );
+            }
+            return process.env[name];
+        });
     }
 
     /**
